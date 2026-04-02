@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  anonymizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: datathon-anonymizer
+    ports:
+      - "8092:8000"
+    volumes:
+      - ./app:/app/app
+      - ./static:/app/static
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
