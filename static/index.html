@@ -180,6 +180,18 @@
       </div>
     </div>
 
+    <!-- Simulació de k -->
+    <div class="card" id="k-sim-card" style="display:none;">
+      <div class="card-title" data-lang="kSimTitle">Simulació k=2..5</div>
+      <div id="k-sim-content"></div>
+    </div>
+    <div class="btn-group" style="margin-top:0; margin-bottom:1.25rem;">
+      <button class="btn btn-secondary" id="sim-btn" onclick="runSimulation()">
+        <span id="sim-spinner" class="spinner" style="display:none;"></span>
+        <span data-lang="btnSimulate">🔭 Simular k=2..5</span>
+      </button>
+    </div>
+
     <div id="phase4-error" class="alert alert-danger" style="display:none;"></div>
     <div class="btn-group">
       <button class="btn btn-secondary" onclick="goToPhase(3)" data-lang="btnBack">← Enrere</button>

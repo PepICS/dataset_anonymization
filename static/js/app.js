@@ -384,6 +384,57 @@ async function saveGeneralizations() {
   }
 }
 
+// ── Simulació de k ────────────────────────────────────────────────────────────
+async function runSimulation() {
+  var btn     = el('sim-btn');
+  var spinner = el('sim-spinner');
+  btn.disabled = true;
+  spinner.style.display = 'inline-block';
+
+  try {
+    var data = await api('/api/simulate-k', 'POST', { session_id: State.sessionId });
+    renderSimulation(data);
+    el('k-sim-card').style.display = 'block';
+    el('k-sim-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch(err) {
+    showErr('phase4-error', err.message);
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+function renderSimulation(data) {
+  var sims = data.simulations;
+  if (!sims || !sims.length) return;
+
+  var maxPct = Math.max.apply(null, sims.map(function(s){ return s.pct_suppressed; }));
+
+  var html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.65rem;margin-bottom:1rem;">';
+  sims.forEach(function(s) {
+    var pct   = s.pct_suppressed;
+    var color = pct < 5 ? 'var(--success)' : pct < 20 ? 'var(--amber)' : 'var(--danger)';
+    var barW  = maxPct > 0 ? Math.round(pct / maxPct * 100) : 0;
+    html +=
+      '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:0.9rem;text-align:center;">' +
+        '<div style="font-size:1.5rem;font-weight:800;font-family:var(--mono);color:var(--accent);">k=' + s.k + '</div>' +
+        '<div style="font-size:1.3rem;font-weight:800;font-family:var(--mono);color:' + color + ';margin:0.35rem 0;">' + s.n_patients_final + '</div>' +
+        '<div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">' + t('resPatientsAfter') + '</div>' +
+        '<div style="background:var(--surface3);border-radius:3px;height:5px;margin:0.6rem 0 0.35rem;overflow:hidden;">' +
+          '<div style="background:' + color + ';width:' + barW + '%;height:100%;border-radius:3px;"></div>' +
+        '</div>' +
+        '<div style="font-size:0.75rem;color:' + color + ';font-weight:700;">' + pct + '% ' + t('resPct') + '</div>' +
+        '<div style="font-size:0.68rem;color:var(--text-muted);margin-top:0.2rem;">' + s.conforming_groups + '/' + s.n_groups + ' ' + t('resGroups').toLowerCase() + '</div>' +
+      '</div>';
+  });
+  html += '</div>';
+
+  // Nota d'interpretació
+  html += '<p style="font-size:0.78rem;color:var(--text-muted);">' + t('kSimNote') + '</p>';
+
+  el('k-sim-content').innerHTML = html;
+}
+
 // ── FASE 4: K-anonimitat ──────────────────────────────────────────────────────
 async function runAnonymization() {
   hideErr('phase4-error');
@@ -469,10 +520,10 @@ function renderResults(m) {
       '<h3>'+t('downloadCSV')+'</h3>' +
       '<p>'+t('downloadCSVSub')+'</p>' +
     '</a>' +
-    '<a class="download-card" href="/api/download/report/pdf/'+sid+'" download>' +
+    '<a class="download-card" href="/api/download/report/html/'+sid+'" download>' +
       '<div class="download-icon">📑</div>' +
-      '<h3>'+t('downloadPDF')+'</h3>' +
-      '<p>'+t('downloadPDFSub')+'</p>' +
+      '<h3>'+t('downloadHTML')+'</h3>' +
+      '<p>'+t('downloadHTMLSub')+'</p>' +
     '</a>' +
     '<a class="download-card" href="/api/download/report/md/'+sid+'" download>' +
       '<div class="download-icon">📝</div>' +
