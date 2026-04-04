@@ -1,6 +1,8 @@
 # 🔐 Datathon Anonymizer
 
-> Eina local i portable per a la preparació de datasets clínics anonimitzats per a datathons sanitaris.
+> Local and portable tool for preparing anonymized clinical datasets for health datathons.
+
+**[🇪🇸 Castellano](docs/README.es.md) · [🇨🇦 Català](docs/README.ca.md)**
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi)](https://fastapi.tiangolo.com)
@@ -9,58 +11,58 @@
 
 ---
 
-## Què és?
+## What is it?
 
-Aplicació web **desplegable en local** amb un sol comandament Docker que permet a qualsevol centre sanitari:
+A web application **deployable locally with a single Docker command** that allows any healthcare centre to:
 
-1. Carregar un CSV de dades clíniques en format llarg estàndard
-2. Classificar les variables com a quasi-identificadors o no identificatives
-3. Definir generalitzacions per a cada quasi-identificador
-4. Aplicar **k-anonimitat** amb supressió de registres no conformes
-5. Descarregar el dataset anonimitzat i un **informe complet** per al Delegat de Protecció de Dades
+1. Upload a clinical CSV in standard long format
+2. Classify variables as quasi-identifiers or non-identifying
+3. Define generalizations for each quasi-identifier
+4. Apply **k-anonymity** with suppression of non-conforming records
+5. Download the anonymized dataset and a **complete report** for the Data Protection Officer
 
-Cap dada surt del servidor. Tot s'executa en local, sense cap dependència de serveis externs.
+No data leaves the server. Everything runs locally, with no dependency on external services.
 
 ---
 
-## Execució ràpida
+## Quick start
 
 ```bash
-# 1. Clona el repositori
-git clone https://github.com/el-teu-usuari/datathon-anonymizer.git
+# 1. Clone the repository
+git clone https://github.com/your-user/datathon-anonymizer.git
 cd datathon-anonymizer
 
-# 2. Arrenca l'aplicació
+# 2. Start the application
 docker compose up --build -d
 
-# 3. Obre el navegador
+# 3. Open your browser
 # → http://localhost:8000
 ```
 
-Per aturar:
+To stop:
 
 ```bash
 docker compose down
 ```
 
-> **Port personalitzat**: modifica el port esquerre al `docker-compose.yml` (ex: `"8092:8000"`)
+> **Custom port**: edit the left-hand port in `docker-compose.yml` (e.g. `"8092:8000"`)
 
 ---
 
-## Format del CSV d'entrada
+## Input CSV format
 
-El fitxer ha de tenir **exactament 4 columnes** en format llarg:
+The file must have **exactly 4 columns** in long format:
 
-| Columna | Noms acceptats | Descripció |
-|---------|---------------|------------|
-| `pacient` | `patient_id`, `pacient_id`, `nhc`, `pid` | Identificador únic del pacient |
-| `data` | `date`, `fecha`, `datetime`, `timestamp` | Data de la visita o observació |
-| `item` | `variable`, `var`, `field`, `measure` | Nom de la variable clínica |
-| `valor` | `value`, `val`, `resultat`, `result` | Valor observat |
+| Column | Accepted names | Description |
+|--------|---------------|-------------|
+| `pacient` | `patient_id`, `pacient_id`, `nhc`, `pid` | Unique patient identifier |
+| `data` | `date`, `fecha`, `datetime`, `timestamp` | Visit or observation date |
+| `item` | `variable`, `var`, `field`, `measure` | Clinical variable name |
+| `valor` | `value`, `val`, `resultat`, `result` | Observed value |
 
-L'aplicació detecta automàticament les variantes del nom de columna i les normalitza internament.
+The application automatically detects column name variants and normalises them internally.
 
-### Exemple de fila
+### Example rows
 
 ```csv
 patient_id,data,variable,valor
@@ -72,127 +74,132 @@ P0001,2023-03-28,estado_cognitivo,deterioro_moderado
 
 ---
 
-## Flux de l'aplicació
+## Application flow
 
 ```
-┌──────────────┐    ┌─────────────────┐    ┌──────────────────┐    ┌──────────────┐
-│  1. Càrrega  │───▶│ 2. Classificació│───▶│ 3. Generalització│───▶│  4. k-anon   │
-│  CSV + perfil│    │ QI / no-ID      │    │ bins / categories│    │  + resultats │
-└──────────────┘    └─────────────────┘    └──────────────────┘    └──────────────┘
+┌──────────────┐    ┌──────────────────┐    ┌──────────────────┐    ┌──────────────┐
+│  1. Upload   │───▶│ 2. Classification│───▶│ 3. Generalization│───▶│ 4. K-anon.  │
+│  CSV + profile│   │ QI / non-ID      │    │ bins / categories│    │ + results   │
+└──────────────┘    └──────────────────┘    └──────────────────┘    └──────────────┘
 ```
 
-### Fase 1 — Càrrega i perfilat
+### Phase 1 — Upload and profiling
 
-- Accepta codificacions UTF-8, Latin-1, CP1252
-- Detecta automàticament el tipus de cada variable (numèrica vs. categòrica)
-- Mostra estadístiques, distribució de valors i previsualització
+- Accepts UTF-8, Latin-1, CP1252 encodings
+- Automatically detects variable type (numeric vs. categorical)
+- Shows statistics, value distribution and data preview
 
-### Fase 2 — Classificació de variables
+### Phase 2 — Variable classification
 
-Per a cada variable, l'usuari indica el rol:
+For each variable, the user indicates its role:
 
-| Rol | Tractament automàtic |
-|-----|---------------------|
-| 🔑 Identificador directe (`pacient`) | Hash SHA-256 irreversible (prefix `H-`) |
-| 📅 Data (`data`) | Delta d'enters: dies des de la primera visita del pacient |
-| 🔍 Quasi-identificador | Generalització definida per l'usuari + k-anonimitat |
-| ✅ No identificatiu | Sense canvis |
+| Role | Automatic treatment |
+|------|---------------------|
+| 🔑 Direct identifier (`pacient`) | Irreversible SHA-256 hash (prefix `H-`) |
+| 📅 Date (`data`) | Integer delta: days since each patient's first visit |
+| 🔍 Quasi-identifier | User-defined generalization + k-anonymity |
+| ✅ Non-identifying | No changes |
 
-### Fase 3 — Generalitzacions
+### Phase 3 — Generalizations
 
-Per a cada quasi-identificador, l'usuari defineix com agrupar els valors:
+For each quasi-identifier, the user defines how to group values:
 
-- **Variables numèriques** → intervals personalitzats (ex: edat → `0-17`, `18-39`, `40-64`, `65+`)
-- **Variables categòriques** → mapeig de valors originals a categories agrupades
+- **Numeric variables** → custom intervals (e.g. age → `0-17`, `18-39`, `40-64`, `65+`)
+- **Categorical variables** → mapping of original values to broader groups
 
-Els valors absents (NaN) s'imputen automàticament:
-- Categòrics → `Desconocido`
-- Numèrics → mediana del conjunt observat
+Missing values (NaN) are automatically imputed:
+- Categorical → `Desconocido`
+- Numeric → median of the observed set
 
-### Fase 4 — K-anonimitat i resultats
+### Phase 4 — K-anonymity and results
 
-- **Simulació prèvia**: mostra l'impacte de k=2, 3, 4, 5 abans d'executar
-- **Paràmetre k**: cada combinació de quasi-identificadors ha de tenir ≥ k pacients
-- **Supressió**: els pacients en grups massa petits s'eliminen del dataset final
-- **Mètriques**: flux de pacients, distribució de classes d'equivalència, grups suprimits
-
----
-
-## Descàrregues generades
-
-| Fitxer | Format | Per a qui |
-|--------|--------|-----------|
-| `*_anonymized.csv` | CSV | Participants del datathon |
-| `*_report.html` | HTML estilitzat | Delegat de Protecció de Dades (imprimible com a PDF) |
-| `*_report.md` | Markdown | Repositori / documentació tècnica |
-| `anonymization_report.json` | JSON | Auditoria i traçabilitat |
-
-### Informe per al DPD
-
-L'informe HTML (imprimible com a PDF des del navegador amb Ctrl+P) inclou:
-
-1. Resum executiu amb mètriques clau
-2. Descripció del dataset original
-3. Marc legal aplicable (RGPD, LOPDGDD, Dictamen 05/2014 del GT Art. 29)
-4. Descripció de totes les transformacions aplicades
-5. Resultats i distribució de classes d'equivalència
-6. Limitacions metodològiques
-7. Checklist de verificació per al DPD
+- **Preview simulation**: shows the impact of k=2, 3, 4, 5 before running
+- **Parameter k**: every quasi-identifier combination must appear in ≥ k patients
+- **Suppression**: patients in groups below k are removed from the final dataset
+- **Metrics**: patient flow, equivalence class distribution, suppressed groups
 
 ---
 
-## Sobre el risc de reidentificació
+## Security guarantees
 
-La protecció real d'aquest procés té **dues capes complementàries**:
+The protection offered by this process rests on **three independent and complementary layers**:
 
-**Capa 1 — Incertesa de mostreig** (inherent al context del datathon)
+### Layer 1 — Technical (applied transformations)
 
-El dataset d'un datathon és una mostra aleatòria d'una població gran. Un atacant que intenti reidentificar una persona concreta no pot saber si aquella persona és al dataset, cosa que per si sola ja és una protecció significativa. Amb 2.000 pacients d'una comunitat de 500.000, la probabilitat que una persona específica sigui a la mostra és inferior al 0,4%.
+| Transformation | Protection |
+|---------------|------------|
+| SHA-256 hash on patient ID | Irreversible pseudonymisation |
+| Date → integer delta | Absolute dates destroyed |
+| Quasi-identifier generalization | Cross-linkage granularity eliminated |
+| K-anonymity | Mathematical impossibility of singling out |
 
-**Capa 2 — K-anonimitat**
+### Layer 2 — Statistical (sampling uncertainty)
 
-Garanteix que, per a qualsevol perfil definit pels quasi-identificadors, existeixin almenys k-1 individus indistingibles. Amb k=3 i dos quasi-identificadors ben generalitzats (ex: edat en rangs amples + sexe), la protecció és molt robusta en el context d'un datathon.
+The datathon dataset is a **random sample** of a much larger population. A potential attacker cannot know a priori whether a specific individual is in the dataset at all. This uncertainty — recognised by ENISA and the Article 29 Working Party as a re-identification risk mitigating factor — makes any re-identification attempt speculative and unreliable, regardless of the attacker's background knowledge.
 
-### Quasi-identificadors recomanats
+### Layer 3 — Organizational (datathon environment)
 
-| Variable | Risc | Recomanació |
-|----------|------|-------------|
-| `edad` | 🔴 Alt | Sempre QI; generalitzar en rangs de ≥15 anys |
-| `sexo_y_o_genero` | 🔴 Alt | Sempre QI |
-| `nivel_educativo` | 🟡 Mitjà | QI si el dataset és <500 pacients |
-| `situacion_de_convivencia` | 🟡 Mitjà | QI si el dataset és <500 pacients |
-| `origen` | 🟡 Mitjà | QI en poblacions locals petites |
-| `estado_cognitivo` | 🟢 Baix | Opcional; amb sampling ja és poc probable la reidentificació |
-| `fragilidad` | 🟢 Baix | Opcional |
-| Reste de variables | 🟢 Molt baix | No identificatives en context de datathon |
+- **Accredited participants**: access restricted to a pre-selected, registered group
+- **Data Use Agreement**: all participants sign a binding commitment prohibiting any re-identification attempt
+- **Secure infrastructure**: event hosted on **Instituto de Salud Carlos III (Madrid)** servers, managed by qualified ISCIII staff
+- **Closed environment**: data cannot be extracted outside the controlled systems
+
+> The combination of these three layers provides protection **substantially above** what GDPR and ENISA guidelines require for health research data.
 
 ---
 
-## Estructura del repositori
+## Generated outputs
+
+| File | Format | For |
+|------|--------|-----|
+| `*_anonymized.csv` | CSV | Datathon participants |
+| `*_report.html` | Styled HTML | DPO (printable as PDF from browser) |
+| `*_report.md` | Markdown | Repository / technical documentation |
+| `anonymization_report.json` | JSON | Audit and traceability |
+
+### DPO report
+
+The HTML report (printable as PDF via Ctrl+P) includes:
+
+1. Executive summary with key metrics
+2. Original dataset description
+3. Applicable legal framework (GDPR, LOPDGDD, Art. 29 WP Opinion 05/2014)
+4. Description of all applied transformations
+5. Results and equivalence class distribution
+6. Three-layer security guarantee analysis
+7. Technical certification checklist
+
+---
+
+## Repository structure
 
 ```
 datathon-anonymizer/
 │
 ├── app/
-│   ├── main.py                    # FastAPI: endpoints i gestió de sessions
+│   ├── main.py                    # FastAPI: endpoints and session management
 │   └── modules/
-│       ├── anonymizer.py          # Tota la lògica d'anonimització
-│       ├── report_md.py           # Generació d'informe Markdown (ca/es/en)
-│       └── report_html.py         # Conversió Markdown → HTML estilitzat
+│       ├── anonymizer.py          # All anonymization logic
+│       ├── report_md.py           # Markdown report generation (ca/es/en)
+│       └── report_html.py         # Markdown → styled HTML conversion
 │
 ├── static/
-│   ├── index.html                 # Interfície wizard de 4 fases
-│   ├── css/styles.css             # Estils (dark mode clínic)
+│   ├── index.html                 # 4-phase wizard interface
+│   ├── css/styles.css             # Styles (clinical dark mode)
 │   └── js/
-│       ├── app.js                 # Lògica del frontend (vanilla JS)
-│       └── i18n.js                # Traduccions: català, castellà, anglès
+│       ├── app.js                 # Frontend logic (vanilla JS)
+│       └── i18n.js                # Translations: Catalan, Spanish, English
+│
+├── docs/
+│   ├── README.es.md               # Spanish README
+│   └── README.ca.md               # Catalan README
 │
 ├── sample_data/
-│   ├── dataset_500p.csv           # Dataset sintètic de 500 pacients
-│   ├── dataset_2000p.csv          # Dataset sintètic de 2.000 pacients
-│   └── Cataluña_Unificado.xlsx    # Excel de variables clíniques de referència
+│   ├── dataset_500p.csv           # Synthetic dataset — 500 patients
+│   ├── dataset_2000p.csv          # Synthetic dataset — 2,000 patients
+│   └── Cataluña_Unificado.xlsx    # Reference clinical variables Excel
 │
-├── generate_synthetic.py          # Script per regenerar datasets sintètics
+├── generate_synthetic.py          # Script to regenerate synthetic datasets
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -201,90 +208,72 @@ datathon-anonymizer/
 
 ---
 
-## Arquitectura tècnica
+## Technical architecture
 
-| Component | Tecnologia |
+| Component | Technology |
 |-----------|-----------|
 | Backend | Python 3.12 + FastAPI |
-| Frontend | HTML/CSS/JS pur (sense frameworks) |
-| Contenidor | Docker + Docker Compose |
-| Dependències Python | pandas, numpy, fastapi, uvicorn, markdown |
-| Estat de sessió | En memòria (no persistit) |
-| Comunicació | API REST JSON |
+| Frontend | Pure HTML/CSS/JS (no frameworks) |
+| Container | Docker + Docker Compose |
+| Python dependencies | pandas, numpy, fastapi, uvicorn, markdown |
+| Session state | In-memory (not persisted) |
+| Communication | REST JSON API |
 
-L'aplicació no té base de dades, no fa servir cookies de seguiment i no genera cap log persistent amb dades del fitxer carregat.
-
----
-
-## Multilingüe
-
-La interfície és disponible en **català**, **castellà** i **anglès**. L'idioma es selecciona amb els botons a la barra lateral i afecta tant la interfície com els informes generats.
+The application has no database, uses no tracking cookies, and generates no persistent logs containing uploaded file data.
 
 ---
 
-## Generació de datasets sintètics
+## Multilingual
 
-El script `generate_synthetic.py` genera datasets de prova llegint les variables directament de l'Excel de referència:
+The interface is available in **Catalan**, **Spanish** and **English**. Language is selected with the sidebar buttons and affects both the interface and the generated reports.
+
+---
+
+## Synthetic dataset generation
+
+The `generate_synthetic.py` script generates test datasets by reading variables directly from the reference Excel:
 
 ```bash
-# Des de dins del contenidor Docker:
+# From inside the Docker container:
 docker exec datathon-anonymizer python3 generate_synthetic.py
 
-# O localment amb Python:
+# Or locally with Python:
 python3 generate_synthetic.py
 ```
 
-Per canviar el nombre de pacients, edita les variables `n_patients` i `visits_per_patient` al final del script.
-
 ---
 
-## Requisits
+## Requirements
 
 - [Docker](https://docs.docker.com/get-docker/) ≥ 24.0
 - [Docker Compose](https://docs.docker.com/compose/) ≥ 2.0
-- Cap altra dependència al host
+- No other dependencies on the host
 
 ---
 
-## Limitacions conegudes
+## Legal framework
 
-- **Sessió en memòria**: si el servidor es reinicia, les sessions actives es perden. Per a ús en datathon (sessió curta), això no és un problema.
-- **Un usuari a la vegada**: no hi ha autenticació ni aïllament de sessions entre usuaris simultanis. Pensat per a ús individual o en xarxa local controlada.
-- **K-anonimitat per supressió**: no implementa generalització addicional automàtica. Si la pèrdua de pacients és massa gran, cal revisar les generalitzacions.
-- **L-diversitat no implementada**: la k-anonimitat no protegeix contra atacs d'homogeneïtat. Amb el context de datathon i la incertesa de mostreig, aquest risc és molt baix a la pràctica.
+This project supports compliance with:
 
----
+- **GDPR (EU Regulation 2016/679)** — Art. 89 and Recital 26 on processing for research
+- **LOPDGDD (LO 3/2018)** — Spanish transposition of GDPR
+- **Article 29 Working Party Opinion 05/2014** — k-anonymity as a recognised technique
+- **ENISA guidelines** on health data anonymization
 
-## Marc legal
-
-Aquest projecte ajuda a complir amb:
-
-- **RGPD (Reglament UE 2016/679)** — Art. 89 i Recital 26 sobre tractament per a recerca
-- **LOPDGDD (LO 3/2018)** — Transposició espanyola del RGPD
-- **Dictamen 05/2014 del Grup de Treball de l'Art. 29** — K-anonimitat com a tècnica reconeguda
-- **Guies ENISA** sobre anonimització de dades sanitàries
-
-> ⚠️ Aquesta eina facilita el procés tècnic, però la responsabilitat de la classificació de les variables i la validació de l'informe recau en el Delegat de Protecció de Dades del centre.
+> ⚠️ This tool facilitates the technical process, but responsibility for variable classification and report validation rests with the centre's Data Protection Officer.
 
 ---
 
-## Llicència
+## Licence
 
-MIT — Lliure per a ús, modificació i distribució. Atribució apreciada.
-
----
-
-## Contribucions
-
-Pull requests benvinguts. Per a canvis majors, obriu primer una *issue*.
-
-Idees per a futures versions:
-- [ ] Autenticació bàsica per a entorns multi-usuari
-- [ ] Persistència de sessions (base de dades lleugera)
-- [ ] Suport per a Excel (.xlsx) com a format d'entrada
-- [ ] Advertiment d'homogeneïtat per a variables sensibles
-- [ ] Soroll diferencial com a alternativa a la supressió
+MIT — Free for use, modification and distribution. Attribution appreciated.
 
 ---
 
-*Construït per a centres sanitaris que volen participar en datathons preservant la privacitat dels seus pacients.*
+## Contributions
+
+Pull requests welcome. For major changes, please open an issue first.
+
+---
+
+*Built for healthcare centres wishing to participate in datathons while protecting their patients' privacy.*
