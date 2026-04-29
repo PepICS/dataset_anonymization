@@ -29,7 +29,7 @@ No data leaves the server. Everything runs locally, with no dependency on extern
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-user/datathon-anonymizer.git
+git clone https://github.com/PepICS/datathon-anonymizer.git
 cd datathon-anonymizer
 
 # 2. Start the application
