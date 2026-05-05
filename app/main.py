@@ -1,13 +1,13 @@
 """
-main.py — Datathon Anonymizer v2
+main.py — Datathon Anonymizer v3
 ---------------------------------
 Endpoints:
-  POST   /api/upload              → Càrrega CSV, normalització i perfilat
+  POST   /api/upload              → Càrrega de múltiples CSVs, normalització i perfilat
   POST   /api/classify            → Classificació d'ítems (quasi_id / non_id)
   POST   /api/set-generalizations → Configuració de generalitzacions
   POST   /api/simulate-k          → Simulació de supressió per k=2..5
   POST   /api/anonymize           → Procés complet + generació d'informes
-  GET    /api/download/csv/{sid}       → CSV anonimitzat
+  GET    /api/download/csv/{sid}       → ZIP amb un CSV anonimitzat per fitxer original
   GET    /api/download/report/html/{sid} → Informe HTML
   GET    /api/download/report/md/{sid}   → Informe Markdown
   GET    /api/download/report/{sid}      → Informe JSON
@@ -17,8 +17,10 @@ Endpoints:
 import io
 import json
 import uuid
+import zipfile
 import traceback
 from datetime import datetime, timezone
+from typing import List
 
 import pandas as pd
 from fastapi import FastAPI, File, UploadFile, HTTPException
@@ -36,7 +38,7 @@ from app.modules.report_md   import generate_markdown_report
 from app.modules.report_html import generate_html_report
 
 # ── App ───────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Datathon Anonymizer", version="2.0.0")
+app = FastAPI(title="Datathon Anonymizer", version="3.0.0")
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
@@ -44,6 +46,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 sessions: dict[str, dict] = {}
 PREVIEW_ROWS = 8
+_SOURCE_COL  = "_source_file"   # columna interna que recorda l'origen de cada fila
 
 _REPORT_TITLES = {
     "ca": "Informe d'Anonimització de Dades Clíniques",
@@ -70,7 +73,7 @@ class GeneralizationConfig(BaseModel):
 class AnonymizeRequest(BaseModel):
     session_id: str
     k:          int
-    lang:       str = "ca"
+    lang:       str = "es"
 
 class SimulateKRequest(BaseModel):
     session_id: str
@@ -84,7 +87,8 @@ def _get_session(sid: str) -> dict:
     return sessions[sid]
 
 def _df_preview(df: pd.DataFrame) -> dict:
-    preview = df.head(PREVIEW_ROWS).copy().astype(str)
+    cols = [c for c in df.columns if c != _SOURCE_COL]
+    preview = df[cols].head(PREVIEW_ROWS).copy().astype(str)
     return {"columns": list(preview.columns), "rows": preview.values.tolist()}
 
 def _date_range(df: pd.DataFrame) -> dict:
@@ -94,12 +98,31 @@ def _date_range(df: pd.DataFrame) -> dict:
     except Exception:
         return {"min": None, "max": None}
 
+def _read_csv(content: bytes) -> pd.DataFrame:
+    """Llegeix un CSV provant diverses codificacions."""
+    for enc in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+        try:
+            df = pd.read_csv(io.BytesIO(content), encoding=enc, low_memory=False)
+            df.columns = [c.strip().lower() for c in df.columns]
+            return df
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("No s'ha pogut llegir el fitxer (encoding no reconegut).")
+
 def _stream(content: str | bytes, media_type: str, filename: str) -> StreamingResponse:
     return StreamingResponse(
         iter([content]),
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+def _build_zip(csv_map: dict[str, str]) -> bytes:
+    """Construeix un ZIP en memòria amb un CSV per entrada del dict."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, csv_content in csv_map.items():
+            zf.writestr(fname, csv_content)
+    return buf.getvalue()
 
 
 # ── Ruta arrel ────────────────────────────────────────────────────────────────
@@ -110,55 +133,79 @@ async def root():
         return f.read()
 
 
-# ── Endpoint 1: Càrrega ───────────────────────────────────────────────────────
+# ── Endpoint 1: Càrrega (múltiples fitxers) ───────────────────────────────────
 
 @app.post("/api/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload(files: List[UploadFile] = File(...)):
+    """
+    Accepta un o més fitxers CSV en format llarg estàndard (4 columnes).
+    Els concatena internament afegint una columna '_source_file' per
+    identificar l'origen de cada fila. El perfilat d'ítems és global
+    sobre el dataset combinat.
+    """
     try:
-        content = await file.read()
-        df = None
-        for enc in ("utf-8", "latin-1", "cp1252"):
-            try:
-                df = pd.read_csv(io.BytesIO(content), encoding=enc, low_memory=False)
-                df.columns = [c.strip().lower() for c in df.columns]
-                break
-            except UnicodeDecodeError:
-                continue
-        if df is None:
-            raise HTTPException(400, "No s'ha pogut llegir el fitxer.")
+        if not files:
+            raise HTTPException(400, "Cal adjuntar almenys un fitxer CSV.")
 
-        df, col_mapping = normalize_columns(df)
-        errors = validate_dataframe(df)
-        if errors:
-            raise HTTPException(400, detail=" | ".join(errors))
+        dfs        = []
+        filenames  = []
+        col_mapping_global = {}
 
-        items  = profile_items(df)
-        dr     = _date_range(df)
-        sid    = str(uuid.uuid4())
+        for upload_file in files:
+            content = await upload_file.read()
+            df_raw  = _read_csv(content)
+            df_raw, col_mapping = normalize_columns(df_raw)
+
+            errors = validate_dataframe(df_raw)
+            if errors:
+                raise HTTPException(
+                    400,
+                    detail=f"Fitxer '{upload_file.filename}': {' | '.join(errors)}"
+                )
+
+            df_raw[_SOURCE_COL] = upload_file.filename
+            dfs.append(df_raw)
+            filenames.append(upload_file.filename)
+
+            # Merge col_mapping (el primer fitxer que mapeja una columna és el referent)
+            for orig, canon in col_mapping.items():
+                if canon not in col_mapping_global.values():
+                    col_mapping_global[orig] = canon
+
+        # Dataset combinat
+        df = pd.concat(dfs, ignore_index=True)
+
+        items = profile_items(df)
+        dr    = _date_range(df)
+        sid   = str(uuid.uuid4())
+
         sessions[sid] = {
             "df_original":     df,
-            "filename":        file.filename,
-            "col_mapping":     col_mapping,
+            "filenames":       filenames,          # llista de noms originals
+            "col_mapping":     col_mapping_global,
             "date_range":      dr,
             "items":           items,
             "classifications": {},
             "generalizations": {},
-            "df_anonymized":   None,
+            "dfs_anonymized":  None,               # dict {filename → df} després d'anonimitzar
             "metrics":         None,
             "imputation_log":  {},
             "report_md":       None,
             "report_html":     None,
         }
+
         return {
-            "session_id": sid,
-            "filename":   file.filename,
-            "n_records":  len(df),
-            "n_patients": int(df["pacient"].nunique()),
-            "n_items":    len(items),
-            "date_range": dr,
-            "items":      items,
-            "preview":    _df_preview(df),
+            "session_id":  sid,
+            "filenames":   filenames,
+            "n_files":     len(filenames),
+            "n_records":   len(df),
+            "n_patients":  int(df["pacient"].nunique()),
+            "n_items":     len(items),
+            "date_range":  dr,
+            "items":       items,
+            "preview":     _df_preview(df),
         }
+
     except HTTPException:
         raise
     except Exception as e:
@@ -193,7 +240,9 @@ async def simulate_k(req: SimulateKRequest):
         raise HTTPException(400, "Cal classificar els ítems primer.")
     try:
         quasi = [k for k, v in sess["classifications"].items() if v == "quasi_id"]
-        df_t  = compute_date_deltas(sess["df_original"])
+        # Simulem sobre el dataset combinat (sense la columna interna)
+        df_t  = sess["df_original"].drop(columns=[_SOURCE_COL], errors="ignore")
+        df_t  = compute_date_deltas(df_t)
         if sess["generalizations"]:
             df_t = apply_generalizations(df_t, sess["generalizations"])
         df_t, _ = impute_missing_values(df_t, quasi)
@@ -232,29 +281,50 @@ async def anonymize(req: AnonymizeRequest):
         generalizations = sess["generalizations"]
         quasi           = [k for k, v in classifications.items() if v == "quasi_id"]
 
-        df_t = compute_date_deltas(sess["df_original"])
+        # ── Procés sobre el dataset combinat ──────────────────────────────────
+        # Conservem la columna _source_file durant tot el procés
+        df_t = sess["df_original"].copy()
+        df_core = df_t.drop(columns=[_SOURCE_COL])
+
+        df_core = compute_date_deltas(df_core)
         if generalizations:
-            df_t = apply_generalizations(df_t, generalizations)
-        df_t, imputation_log = impute_missing_values(df_t, quasi)
-        df_t = hash_patient_ids(df_t)
+            df_core = apply_generalizations(df_core, generalizations)
+        df_core, imputation_log = impute_missing_values(df_core, quasi)
+        df_core = hash_patient_ids(df_core)
 
-        k_result = apply_k_anonymity(df_t, quasi, req.k)
+        k_result = apply_k_anonymity(df_core, quasi, req.k)
         df_anon  = k_result["df_anonymized"]
-        metrics  = compute_metrics(df_t, df_anon, quasi, k_result)
+        metrics  = compute_metrics(df_core, df_anon, quasi, k_result)
 
-        sess["df_anonymized"]  = df_anon
+        # Recuperem la columna d'origen sobre el df anonimitzat
+        # (els índexos es conserven de pd.concat, podem fer join per índex)
+        df_anon_with_src = df_anon.copy()
+        df_anon_with_src[_SOURCE_COL] = df_t.loc[df_anon.index, _SOURCE_COL].values
+
+        # ── Separar per fitxer original ───────────────────────────────────────
+        dfs_anonymized = {}
+        for fname in sess["filenames"]:
+            dfs_anonymized[fname] = (
+                df_anon_with_src[df_anon_with_src[_SOURCE_COL] == fname]
+                .drop(columns=[_SOURCE_COL])
+                .reset_index(drop=True)
+            )
+
+        sess["dfs_anonymized"] = dfs_anonymized
         sess["metrics"]        = metrics
         sess["imputation_log"] = imputation_log
 
-        # Generar informes
+        # ── Generar informes ──────────────────────────────────────────────────
         now_str      = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         all_items    = [i["name"] for i in sess["items"]]
         orig_pacient = next(
             (o for o, c in sess["col_mapping"].items() if c == "pacient"), "patient_id"
         )
+        filenames_str = ", ".join(sess["filenames"])
+
         report_kwargs = dict(
             lang             = req.lang,
-            filename         = sess["filename"],
+            filename         = filenames_str,
             col_mapping      = sess["col_mapping"],
             classifications  = classifications,
             generalizations  = generalizations,
@@ -267,14 +337,16 @@ async def anonymize(req: AnonymizeRequest):
         sess["report_md"]   = generate_markdown_report(**report_kwargs)
         sess["report_html"] = generate_html_report(
             markdown_text      = sess["report_md"],
-            title              = _REPORT_TITLES.get(req.lang, _REPORT_TITLES["ca"]),
-            filename           = sess["filename"],
+            title              = _REPORT_TITLES.get(req.lang, _REPORT_TITLES["es"]),
+            filename           = filenames_str,
             generated_at       = now_str,
-            confidential_label = _CONFIDENTIAL.get(req.lang, _CONFIDENTIAL["ca"]),
+            confidential_label = _CONFIDENTIAL.get(req.lang, _CONFIDENTIAL["es"]),
         )
 
         result = {k: v for k, v in metrics.items() if not isinstance(v, pd.DataFrame)}
         result["imputation_log"] = imputation_log
+        result["n_files"]        = len(sess["filenames"])
+        result["filenames"]      = sess["filenames"]
         return result
 
     except HTTPException:
@@ -288,29 +360,50 @@ async def anonymize(req: AnonymizeRequest):
 
 @app.get("/api/download/csv/{session_id}")
 async def download_csv(session_id: str):
+    """
+    Si hi ha un sol fitxer retorna un CSV directament.
+    Si n'hi ha més d'un, retorna un ZIP amb un CSV anonimitzat per fitxer original.
+    """
     sess = _get_session(session_id)
-    if sess["df_anonymized"] is None:
+    if sess["dfs_anonymized"] is None:
         raise HTTPException(400, "Cal executar l'anonimització primer.")
-    buf = io.StringIO()
-    sess["df_anonymized"].to_csv(buf, index=False)
-    fname = sess["filename"].replace(".csv", "")
-    return _stream(buf.getvalue(), "text/csv", f"{fname}_anonymized.csv")
+
+    dfs = sess["dfs_anonymized"]
+
+    if len(dfs) == 1:
+        fname, df = next(iter(dfs.items()))
+        buf = io.StringIO()
+        df.to_csv(buf, index=False)
+        out_name = fname.replace(".csv", "") + "_anonymized.csv"
+        return _stream(buf.getvalue(), "text/csv", out_name)
+    else:
+        csv_map = {}
+        for fname, df in dfs.items():
+            buf = io.StringIO()
+            df.to_csv(buf, index=False)
+            out_name = fname.replace(".csv", "") + "_anonymized.csv"
+            csv_map[out_name] = buf.getvalue()
+        zip_bytes = _build_zip(csv_map)
+        return _stream(zip_bytes, "application/zip", "datasets_anonymized.zip")
+
 
 @app.get("/api/download/report/html/{session_id}")
 async def download_html(session_id: str):
     sess = _get_session(session_id)
     if not sess.get("report_html"):
         raise HTTPException(400, "Cal executar l'anonimització primer.")
-    fname = sess["filename"].replace(".csv", "")
-    return _stream(sess["report_html"], "text/html", f"{fname}_report.html")
+    fbase = sess["filenames"][0].replace(".csv", "") if sess["filenames"] else "report"
+    return _stream(sess["report_html"], "text/html", f"{fbase}_report.html")
+
 
 @app.get("/api/download/report/md/{session_id}")
 async def download_md(session_id: str):
     sess = _get_session(session_id)
     if not sess.get("report_md"):
         raise HTTPException(400, "Cal executar l'anonimització primer.")
-    fname = sess["filename"].replace(".csv", "")
-    return _stream(sess["report_md"], "text/markdown", f"{fname}_report.md")
+    fbase = sess["filenames"][0].replace(".csv", "") if sess["filenames"] else "report"
+    return _stream(sess["report_md"], "text/markdown", f"{fbase}_report.md")
+
 
 @app.get("/api/download/report/{session_id}")
 async def download_json(session_id: str):
@@ -318,7 +411,7 @@ async def download_json(session_id: str):
     if sess["metrics"] is None:
         raise HTTPException(400, "Cal executar l'anonimització primer.")
     report = {
-        "filename":        sess["filename"],
+        "filenames":       sess["filenames"],
         "classifications": sess["classifications"],
         "generalizations": sess["generalizations"],
         "metrics":         sess["metrics"],
@@ -327,6 +420,7 @@ async def download_json(session_id: str):
         json.dumps(report, ensure_ascii=False, indent=2),
         "application/json", "anonymization_report.json",
     )
+
 
 @app.delete("/api/session/{session_id}")
 async def delete_session(session_id: str):

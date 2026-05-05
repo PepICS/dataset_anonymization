@@ -71,11 +71,12 @@
 
     <div class="card">
       <div class="upload-zone" id="upload-zone">
-        <input type="file" id="file-input" accept=".csv">
+        <input type="file" id="file-input" accept=".csv" multiple>
         <div class="upload-icon">📂</div>
-        <h3 id="drop-title" data-lang="dropZoneTitle">Arrossega el CSV aquí</h3>
-        <p data-lang="dropZoneSub">o fes clic per seleccionar · UTF-8, Latin-1, CP1252</p>
+        <h3 id="drop-title" data-lang="dropZoneTitle">Arrossega els CSV aquí</h3>
+        <p data-lang="dropZoneSub">o fes clic per seleccionar · un o més fitxers · UTF-8, Latin-1, CP1252</p>
       </div>
+      <div id="files-list" style="display:none; margin-top:0.75rem;"></div>
       <div id="upload-error" class="alert alert-danger" style="display:none; margin-top:0.85rem;"></div>
     </div>
 

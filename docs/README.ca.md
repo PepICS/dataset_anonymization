@@ -51,14 +51,13 @@ docker compose down
 
 ## Format del CSV d'entrada
 
-El fitxer ha de tenir **exactament 4 columnes** en format llarg:
+L'eina accepta **un o més fitxers CSV** en format llarg (una fila per pacient-data-variable). Si les dades de la comunitat estan repartides en diverses taules o dominis, es poden pujar tots alhora. L'eina els combina internament i retorna un CSV anonimitzat per cada fitxer original.
 
-| Columna | Noms acceptats | Descripció |
-|---------|---------------|------------|
-| `pacient` | `patient_id`, `pacient_id`, `nhc`, `pid` | Identificador únic del pacient |
-| `data` | `date`, `fecha`, `datetime`, `timestamp` | Data de la visita o observació |
-| `item` | `variable`, `var`, `field`, `measure` | Nom de la variable clínica |
-| `valor` | `value`, `val`, `resultat`, `result` | Valor observat |
+**Requisits quan es pugen múltiples fitxers:**
+
+- Cada fitxer ha de tenir **exactament 4 columnes**: `pacient`, `data`, `item`, `valor`
+- Tots els fitxers han de compartir el **mateix identificador de pacient**
+- Les variables **no s'han de repetir** entre fitxers
 
 L'aplicació detecta automàticament les variantes del nom de columna i les normalitza internament. El nom de les variables clíniques pot ser qualsevol — l'app s'adapta al contingut de cada fitxer.
 
@@ -168,7 +167,8 @@ Amb 2.000 pacients d'una comunitat gran, `edad` + `sexo_y_o_genero` amb k=3 ofer
 
 | Fitxer | Format | Per a qui |
 |--------|--------|-----------|
-| `*_anonymized.csv` | CSV | Participants del datathon |
+| `*_anonymized.csv` | CSV | Participants (un sol fitxer pujat) |
+| `datasets_anonymized.zip` | ZIP | Participants (múltiples fitxers — un CSV per fitxer original) |
 | `*_report.html` | HTML estilitzat | DPD (imprimible com a PDF des del navegador) |
 | `*_report.md` | Markdown | Repositori / documentació tècnica |
 | `anonymization_report.json` | JSON | Auditoria i traçabilitat |

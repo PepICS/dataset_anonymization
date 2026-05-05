@@ -51,7 +51,15 @@ docker compose down
 
 ## Input CSV format
 
-The file must have **exactly 4 columns** in long format:
+The tool accepts **one or more CSV files** in standard long format (one row per patient-date-variable). If a community's data is distributed across several tables or domains, all files can be uploaded at once. The tool concatenates them internally, applies the anonymization pipeline on the combined dataset, and returns one anonymized CSV per original file.
+
+**Requirements when uploading multiple files:**
+
+- Each file must have **exactly 4 columns**: `pacient`, `data`, `item`, `valor`
+- All files must share the **same patient identifier** (same values in the `pacient` column for the same patient)
+- Variables must **not overlap** between files — each clinical variable should appear in only one file
+
+Column names are automatically detected via alias matching:
 
 | Column | Accepted names | Description |
 |--------|---------------|-------------|
@@ -152,7 +160,8 @@ The datathon dataset is a **random sample** of a much larger population. A poten
 
 | File | Format | For |
 |------|--------|-----|
-| `*_anonymized.csv` | CSV | Datathon participants |
+| `*_anonymized.csv` | CSV | Datathon participants (single file upload) |
+| `datasets_anonymized.zip` | ZIP | Datathon participants (multiple file upload — one CSV per original file) |
 | `*_report.html` | Styled HTML | DPO (printable as PDF from browser) |
 | `*_report.md` | Markdown | Repository / technical documentation |
 | `anonymization_report.json` | JSON | Audit and traceability |
@@ -231,14 +240,11 @@ The interface is available in **Catalan**, **Spanish** and **English**. Language
 
 ## Synthetic dataset generation
 
-The `generate_synthetic.py` script generates test datasets by reading variables directly from the reference Excel:
+The `generate_synthetic.py` script generates single-file test datasets, and `generate_multifile_sample.py` generates a 4-file split version (same 500 patients, 65 variables distributed across 4 thematic CSV files) — ideal for testing the multi-file upload feature:
 
 ```bash
-# From inside the Docker container:
-docker exec datathon-anonymizer python3 generate_synthetic.py
-
-# Or locally with Python:
-python3 generate_synthetic.py
+python3 generate_synthetic.py          # → dataset_500p.csv, dataset_2000p.csv
+python3 generate_multifile_sample.py   # → 4 thematic CSV files in sample_data/
 ```
 
 ---

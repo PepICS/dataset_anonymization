@@ -57,44 +57,62 @@ function goToPhase(n) {
 document.addEventListener('DOMContentLoaded', function() {
   var zone  = el('upload-zone');
   var input = el('file-input');
+
   zone.addEventListener('dragover',  function(e){ e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', function(){ zone.classList.remove('drag-over'); });
   zone.addEventListener('drop', function(e){
     e.preventDefault(); zone.classList.remove('drag-over');
-    if (e.dataTransfer.files[0]) doUpload(e.dataTransfer.files[0]);
+    var files = Array.from(e.dataTransfer.files).filter(function(f){ return f.name.toLowerCase().endsWith('.csv'); });
+    if (files.length) doUpload(files);
   });
-  input.addEventListener('change', function(){ if(input.files[0]) doUpload(input.files[0]); });
+  input.addEventListener('change', function(){
+    var files = Array.from(input.files);
+    if (files.length) doUpload(files);
+  });
 
-  // Inicialitzem llengua
-  setLang('ca');
+  setLang('es');
 });
 
-async function doUpload(file) {
-  if (!file.name.toLowerCase().endsWith('.csv')) {
-    showErr('upload-error', 'Només s\'accepten fitxers .csv');
+async function doUpload(files) {
+  // Validar que tots siguin CSV
+  var nonCsv = files.filter(function(f){ return !f.name.toLowerCase().endsWith('.csv'); });
+  if (nonCsv.length) {
+    showErr('upload-error', t('errorOnlyCsv') + ': ' + nonCsv.map(function(f){return f.name;}).join(', '));
     return;
   }
   hideErr('upload-error');
-  el('drop-title').textContent = '⏳ Processant...';
+  el('drop-title').textContent = '⏳ ' + t('uploading') + '...';
+
+  // Mostrar llista de fitxers seleccionats
+  var fl = el('files-list');
+  fl.style.display = 'block';
+  fl.innerHTML = '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem;">' +
+    files.length + ' ' + t('filesSelected') + ':</div>' +
+    files.map(function(f){
+      return '<span style="display:inline-block;background:var(--surface2);border:1px solid var(--border);' +
+        'border-radius:var(--r-sm);padding:0.15rem 0.55rem;margin:0.15rem;font-size:0.78rem;' +
+        'font-family:var(--mono);color:var(--accent);">' + esc(f.name) + '</span>';
+    }).join('');
 
   var fd = new FormData();
-  fd.append('file', file);
+  files.forEach(function(f){ fd.append('files', f); });
 
   try {
-    var res = await fetch('/api/upload', { method:'POST', body:fd });
+    var res  = await fetch('/api/upload', { method:'POST', body:fd });
     var data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Error');
 
     State.sessionId = data.session_id;
     State.items     = data.items;
+    State.nFiles    = data.n_files || 1;
 
-    // Classificació per defecte: tot no_id
     State.classifications = {};
     data.items.forEach(function(item){ State.classifications[item.name] = 'non_id'; });
 
     renderUpload(data);
   } catch(err) {
     showErr('upload-error', err.message);
+    el('files-list').style.display = 'none';
   } finally {
     el('drop-title').setAttribute('data-lang','dropZoneTitle');
     el('drop-title').textContent = t('dropZoneTitle');
@@ -102,14 +120,15 @@ async function doUpload(file) {
 }
 
 function renderUpload(data) {
-  // Stats
+  // Stats — afegim nº de fitxers si n'hi ha més d'un
   var dr = data.date_range;
   var dateStr = (dr && dr.min && dr.max) ? dr.min+' → '+dr.max : '—';
+  var filesStr = data.n_files > 1 ? data.n_files + ' ' + t('files') : (data.filenames ? data.filenames[0] : '—');
   el('stats-grid').innerHTML =
-    statBox(data.n_patients.toLocaleString(), t('statPatients')) +
-    statBox(data.n_records.toLocaleString(),  t('statRecords')) +
-    statBox(data.n_items,                     t('statItems')) +
-    statBox(dateStr,                          t('statDates'), '0.85rem');
+    statBox(filesStr,                           t('statFiles'), '0.85rem') +
+    statBox(data.n_patients.toLocaleString(),   t('statPatients')) +
+    statBox(data.n_records.toLocaleString(),    t('statRecords')) +
+    statBox(data.n_items,                       t('statItems'));
 
   // Items table
   el('items-tbody').innerHTML = data.items.map(function(item){
@@ -386,11 +405,9 @@ async function saveGeneralizations() {
 
 // ── Simulació de k ────────────────────────────────────────────────────────────
 async function runSimulation() {
-  var btn     = el('sim-btn');
-  var spinner = el('sim-spinner');
+  var btn = el('sim-btn'), spinner = el('sim-spinner');
   btn.disabled = true;
   spinner.style.display = 'inline-block';
-
   try {
     var data = await api('/api/simulate-k', 'POST', { session_id: State.sessionId });
     renderSimulation(data);
@@ -407,9 +424,7 @@ async function runSimulation() {
 function renderSimulation(data) {
   var sims = data.simulations;
   if (!sims || !sims.length) return;
-
   var maxPct = Math.max.apply(null, sims.map(function(s){ return s.pct_suppressed; }));
-
   var html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.65rem;margin-bottom:1rem;">';
   sims.forEach(function(s) {
     var pct   = s.pct_suppressed;
@@ -428,10 +443,7 @@ function renderSimulation(data) {
       '</div>';
   });
   html += '</div>';
-
-  // Nota d'interpretació
   html += '<p style="font-size:0.78rem;color:var(--text-muted);">' + t('kSimNote') + '</p>';
-
   el('k-sim-content').innerHTML = html;
 }
 
@@ -518,7 +530,7 @@ function renderResults(m) {
     '<a class="download-card" href="/api/download/csv/'+sid+'" download>' +
       '<div class="download-icon">📄</div>' +
       '<h3>'+t('downloadCSV')+'</h3>' +
-      '<p>'+t('downloadCSVSub')+'</p>' +
+      '<p>'+(State.nFiles > 1 ? t('downloadCSVSubMulti') : t('downloadCSVSub'))+'</p>' +
     '</a>' +
     '<a class="download-card" href="/api/download/report/html/'+sid+'" download>' +
       '<div class="download-icon">📑</div>' +

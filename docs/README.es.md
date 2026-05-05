@@ -51,14 +51,13 @@ docker compose down
 
 ## Formato del CSV de entrada
 
-El fichero debe tener **exactamente 4 columnas** en formato largo:
+La herramienta acepta **uno o más ficheros CSV** en formato largo (una fila por paciente-fecha-variable). Si los datos de la comunidad están repartidos en varias tablas o dominios, se pueden subir todos a la vez. La herramienta los combina internamente y devuelve un CSV anonimizado por cada fichero original.
 
-| Columna | Nombres aceptados | Descripción |
-|---------|------------------|-------------|
-| `pacient` | `patient_id`, `pacient_id`, `nhc`, `pid` | Identificador único del paciente |
-| `data` | `date`, `fecha`, `datetime`, `timestamp` | Fecha de la visita u observación |
-| `item` | `variable`, `var`, `field`, `measure` | Nombre de la variable clínica |
-| `valor` | `value`, `val`, `resultat`, `result` | Valor observado |
+**Requisitos cuando se suben múltiples ficheros:**
+
+- Cada fichero debe tener **exactamente 4 columnas**: `pacient`, `data`, `item`, `valor`
+- Todos los ficheros deben compartir el **mismo identificador de paciente**
+- Las variables **no deben repetirse** entre ficheros
 
 La aplicación detecta automáticamente las variantes del nombre de columna y las normaliza internamente. El nombre de las variables clínicas puede ser cualquiera — la app se adapta al contenido de cada fichero.
 
@@ -168,7 +167,8 @@ Con 2.000 pacientes de una comunidad grande, `edad` + `sexo_y_o_genero` con k=3 
 
 | Fichero | Formato | Para quién |
 |---------|---------|-----------|
-| `*_anonymized.csv` | CSV | Participantes del datathon |
+| `*_anonymized.csv` | CSV | Participantes (un solo fichero subido) |
+| `datasets_anonymized.zip` | ZIP | Participantes (múltiples ficheros — un CSV por fichero original) |
 | `*_report.html` | HTML estilizado | DPD (imprimible como PDF desde el navegador) |
 | `*_report.md` | Markdown | Repositorio / documentación técnica |
 | `anonymization_report.json` | JSON | Auditoría y trazabilidad |
