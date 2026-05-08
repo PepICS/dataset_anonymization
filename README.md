@@ -27,20 +27,43 @@ No data leaves the server. Everything runs locally, with no dependency on extern
 
 ## Quick start
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/your-user/datathon-anonymizer.git
-cd datathon-anonymizer
+### Option A — Pre-built image (recommended, no internet required on the target machine)
 
-# 2. Start the application
-docker compose up --build -d
+```bash
+# 1. Clone the repository (only needs docker-compose.yml and sample_data/)
+git clone https://github.com/PepICS/dataset_anonymization.git
+cd dataset_anonymization
+
+# 2. Pull the pre-built image and start
+docker compose up -d
 
 # 3. Open your browser
 # → http://localhost:8000
 ```
 
-To stop:
+### Option B — Build from source (requires internet)
 
+```bash
+git clone https://github.com/PepICS/dataset_anonymization.git
+cd dataset_anonymization
+docker compose up --build -d
+```
+
+### Option C — Air-gapped / no internet server (SERGAS, hospital networks)
+
+From a machine with internet access:
+```bash
+docker pull ghcr.io/pepics/dataset_anonymization:latest
+docker save ghcr.io/pepics/dataset_anonymization:latest -o datathon-anonymizer.tar
+```
+
+Copy `datathon-anonymizer.tar` and `docker-compose.yml` to the target server, then:
+```bash
+docker load -i datathon-anonymizer.tar
+docker compose up -d
+```
+
+To stop:
 ```bash
 docker compose down
 ```
