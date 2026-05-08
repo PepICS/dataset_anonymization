@@ -53,9 +53,18 @@ docker compose down
 
 Si quieres probar la herramienta antes de utilizar tus propios datos, puedes descargar estos datasets sintéticos:
 
-- [`dataset_500p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_500p.csv) — 500 pacientes, fichero único
-- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_2000p.csv) — 2.000 pacientes, fichero único
-- [División temática (4 ficheros)](https://github.com/PepICS/dataset_anonymization/tree/main/sample_data/thematic) — los mismos pacientes distribuidos en 4 ficheros temáticos, para probar el modo multi-fichero
+**Modo de fichero único** (un solo CSV con todas las variables):
+
+- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/dataset_2000p.csv) — 2.000 pacientes, las 65 variables clínicas en un único fichero
+
+**Modo multi-fichero** (mismos pacientes, variables repartidas en ficheros temáticos):
+
+- [`1_determinantes_sociales.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/1_determinantes_sociales.csv) — determinantes sociales
+- [`2_salud_mental_conductual.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/2_salud_mental_conductual.csv) — salud mental y conductual
+- [`3_funcionalidad_autonomia.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/3_funcionalidad_autonomia.csv) — funcionalidad y autonomía
+- [`4_complejidad_clinica.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/4_complejidad_clinica.csv) — complejidad clínica
+
+Súbelos los cuatro a la vez para probar el modo multi-fichero (arrastra y suelta varios ficheros al mismo tiempo, o Ctrl+clic en el selector de ficheros).
 
 Todos los datasets siguen el formato canónico de 4 columnas (`pacient`, `data`, `item`, `valor`) y contienen datos completamente sintéticos. No incluyen información real de pacientes.
 

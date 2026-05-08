@@ -76,19 +76,18 @@ docker compose down
 
 If you want to test the tool before using your own data, you can download these synthetic datasets:
 
-- [`dataset_500p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_500p.csv) — 500 patients, single file
-- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_2000p.csv) — 2,000 patients, single file
-- [Thematic split (4 files)](https://github.com/PepICS/dataset_anonymization/tree/main/sample_data/thematic) — same patients distributed across 4 thematic files, to test multi-file mode
+**Single-file mode** (one CSV with all variables):
 
-All datasets share the canonical 4-column format (`pacient`, `data`, `item`, `valor`) and contain entirely synthetic data. No real patient information is involved.
+- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/dataset_2000p.csv) — 2,000 patients, all 65 clinical variables in one file
 
-## Sample datasets
+**Multi-file mode** (same patients, variables split across thematic files):
 
-If you want to test the tool before using your own data, you can download these synthetic datasets:
+- [`1_determinantes_sociales.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/1_determinantes_sociales.csv) — social determinants
+- [`2_salud_mental_conductual.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/2_salud_mental_conductual.csv) — mental and behavioural health
+- [`3_funcionalidad_autonomia.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/3_funcionalidad_autonomia.csv) — functionality and autonomy
+- [`4_complejidad_clinica.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/4_complejidad_clinica.csv) — clinical complexity
 
-- [`dataset_500p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_500p.csv) — 500 patients, single file
-- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_2000p.csv) — 2,000 patients, single file
-- [Thematic split (4 files)](https://github.com/PepICS/dataset_anonymization/tree/main/sample_data/thematic) — same patients distributed across 4 thematic files, to test multi-file mode
+Upload all four together to test multi-file mode (drag & drop several files at once, or Ctrl+click in the file picker).
 
 All datasets share the canonical 4-column format (`pacient`, `data`, `item`, `valor`) and contain entirely synthetic data. No real patient information is involved.
 

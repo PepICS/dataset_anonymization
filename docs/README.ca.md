@@ -53,9 +53,18 @@ docker compose down
 
 Si vols provar l'eina abans d'utilitzar les teves pròpies dades, pots descarregar aquests datasets sintètics:
 
-- [`dataset_500p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_500p.csv) — 500 pacients, fitxer únic
-- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_2000p.csv) — 2.000 pacients, fitxer únic
-- [Divisió temàtica (4 fitxers)](https://github.com/PepICS/dataset_anonymization/tree/main/sample_data/thematic) — els mateixos pacients distribuïts en 4 fitxers temàtics, per provar el mode multi-fitxer
+**Mode de fitxer únic** (un sol CSV amb totes les variables):
+
+- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/dataset_2000p.csv) — 2.000 pacients, les 65 variables clíniques en un sol fitxer
+
+**Mode multi-fitxer** (mateixos pacients, variables repartides en fitxers temàtics):
+
+- [`1_determinantes_sociales.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/1_determinantes_sociales.csv) — determinants socials
+- [`2_salud_mental_conductual.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/2_salud_mental_conductual.csv) — salut mental i conductual
+- [`3_funcionalidad_autonomia.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/3_funcionalidad_autonomia.csv) — funcionalitat i autonomia
+- [`4_complejidad_clinica.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/refs/heads/main/sample_data/4_complejidad_clinica.csv) — complexitat clínica
+
+Puja'ls tots quatre alhora per provar el mode multi-fitxer (arrossega i deixa anar diversos fitxers a la vegada, o Ctrl+clic al selector de fitxers).
 
 Tots els datasets segueixen el format canònic de 4 columnes (`pacient`, `data`, `item`, `valor`) i contenen dades completament sintètiques. No inclouen informació real de pacients.
 
