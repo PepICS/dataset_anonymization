@@ -49,6 +49,16 @@ docker compose down
 
 ---
 
+## Datasets de ejemplo
+
+Si quieres probar la herramienta antes de utilizar tus propios datos, puedes descargar estos datasets sintéticos:
+
+- [`dataset_500p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_500p.csv) — 500 pacientes, fichero único
+- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_2000p.csv) — 2.000 pacientes, fichero único
+- [División temática (4 ficheros)](https://github.com/PepICS/dataset_anonymization/tree/main/sample_data/thematic) — los mismos pacientes distribuidos en 4 ficheros temáticos, para probar el modo multi-fichero
+
+Todos los datasets siguen el formato canónico de 4 columnas (`pacient`, `data`, `item`, `valor`) y contienen datos completamente sintéticos. No incluyen información real de pacientes.
+
 ## Formato del CSV de entrada
 
 La herramienta acepta **uno o más ficheros CSV** en formato largo (una fila por paciente-fecha-variable). Si los datos de la comunidad están repartidos en varias tablas o dominios, se pueden subir todos a la vez. La herramienta los combina internamente y devuelve un CSV anonimizado por cada fichero original.

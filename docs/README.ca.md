@@ -49,6 +49,16 @@ docker compose down
 
 ---
 
+## Datasets d'exemple
+
+Si vols provar l'eina abans d'utilitzar les teves pròpies dades, pots descarregar aquests datasets sintètics:
+
+- [`dataset_500p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_500p.csv) — 500 pacients, fitxer únic
+- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_2000p.csv) — 2.000 pacients, fitxer únic
+- [Divisió temàtica (4 fitxers)](https://github.com/PepICS/dataset_anonymization/tree/main/sample_data/thematic) — els mateixos pacients distribuïts en 4 fitxers temàtics, per provar el mode multi-fitxer
+
+Tots els datasets segueixen el format canònic de 4 columnes (`pacient`, `data`, `item`, `valor`) i contenen dades completament sintètiques. No inclouen informació real de pacients.
+
 ## Format del CSV d'entrada
 
 L'eina accepta **un o més fitxers CSV** en format llarg (una fila per pacient-data-variable). Si les dades de la comunitat estan repartides en diverses taules o dominis, es poden pujar tots alhora. L'eina els combina internament i retorna un CSV anonimitzat per cada fitxer original.

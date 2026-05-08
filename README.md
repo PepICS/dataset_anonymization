@@ -72,6 +72,26 @@ docker compose down
 
 ---
 
+## Sample datasets
+
+If you want to test the tool before using your own data, you can download these synthetic datasets:
+
+- [`dataset_500p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_500p.csv) — 500 patients, single file
+- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_2000p.csv) — 2,000 patients, single file
+- [Thematic split (4 files)](https://github.com/PepICS/dataset_anonymization/tree/main/sample_data/thematic) — same patients distributed across 4 thematic files, to test multi-file mode
+
+All datasets share the canonical 4-column format (`pacient`, `data`, `item`, `valor`) and contain entirely synthetic data. No real patient information is involved.
+
+## Sample datasets
+
+If you want to test the tool before using your own data, you can download these synthetic datasets:
+
+- [`dataset_500p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_500p.csv) — 500 patients, single file
+- [`dataset_2000p.csv`](https://raw.githubusercontent.com/PepICS/dataset_anonymization/main/sample_data/dataset_2000p.csv) — 2,000 patients, single file
+- [Thematic split (4 files)](https://github.com/PepICS/dataset_anonymization/tree/main/sample_data/thematic) — same patients distributed across 4 thematic files, to test multi-file mode
+
+All datasets share the canonical 4-column format (`pacient`, `data`, `item`, `valor`) and contain entirely synthetic data. No real patient information is involved.
+
 ## Input CSV format
 
 The tool accepts **one or more CSV files** in standard long format (one row per patient-date-variable). If a community's data is distributed across several tables or domains, all files can be uploaded at once. The tool concatenates them internally, applies the anonymization pipeline on the combined dataset, and returns one anonymized CSV per original file.
