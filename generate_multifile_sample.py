@@ -1,7 +1,7 @@
 """
 generate_multifile_sample.py
 -----------------------------
-Genera 4 CSVs sintètics amb les mateixes 500 pacients i 2 visites,
+Genera 4 CSVs sintètics amb els mateixos 2.000 pacients i 2 visites,
 però amb les 65 variables repartides en 4 blocs temàtics:
 
   1_determinantes_sociales.csv    — determinants socials i demogràfics
@@ -72,7 +72,7 @@ BLOCKS = {
 
 # ── Generació ──────────────────────────────────────────────────────────────────
 
-def generate_multifile(n_patients=500, visits=2, output_dir="sample_data"):
+def generate_multifile(n_patients=2000, visits=2, output_dir="sample_data"):
     # Carrega tots els dominis d'una vegada
     all_vars = []
     for block_vars in BLOCKS.values():
@@ -130,4 +130,4 @@ def generate_multifile(n_patients=500, visits=2, output_dir="sample_data"):
 
 
 if __name__ == "__main__":
-    generate_multifile(n_patients=500, visits=2)
+    generate_multifile(n_patients=2000, visits=2)

@@ -4,7 +4,8 @@ anonymizer.py
 Nucli de la lògica d'anonimització:
   - Normalització i validació del CSV d'entrada (4 columnes)
   - Perfilat d'ítems (detecció numèric vs categòric)
-  - Transformació de dates → delta enters per pacient
+  - Detecció i parsing del format de timestamp (ISO / dayfirst / monthfirst)
+  - Transformació de dates → delta enter de minuts per pacient
   - Hash SHA-256 irreversible de l'identificador de pacient
   - Imputació de NaN als quasi-identificadors
   - Generalitzacions (bins numèrics / mapeig categòric)
@@ -25,6 +26,92 @@ COL_ALIASES = {
 }
 
 _NULL_STRINGS = {"", "nan", "NaN", "None"}
+
+# ── Detecció i parsing de format de timestamp ────────────────────────────────
+DATE_FORMATS = ("iso", "dayfirst", "monthfirst")
+
+_DATE_FORMAT_LABELS = {
+    "iso":        "ISO 8601 (YYYY-MM-DD [HH:MM[:SS]])",
+    "dayfirst":   "Day first (DD/MM/YYYY [HH:MM[:SS]])",
+    "monthfirst": "Month first (MM/DD/YYYY [HH:MM[:SS]])",
+}
+
+
+def _parse_dates(series: pd.Series, fmt: str) -> pd.Series:
+    """Parseja una sèrie segons el format escollit. Sempre retorna datetime64[ns]."""
+    if fmt == "iso":
+        # format="ISO8601" (pandas ≥ 2.0) — accepta data sola, data+hora, micros, zona horària
+        return pd.to_datetime(series, format="ISO8601", errors="coerce", utc=False)
+    if fmt == "dayfirst":
+        return pd.to_datetime(series, dayfirst=True, errors="coerce")
+    if fmt == "monthfirst":
+        return pd.to_datetime(series, dayfirst=False, errors="coerce")
+    # fallback: parsing per defecte de pandas
+    return pd.to_datetime(series, errors="coerce")
+
+
+def detect_date_format(series: pd.Series) -> dict:
+    """
+    Prova ISO, dayfirst i monthfirst sobre la columna 'data'.
+    Retorna estadístiques per cadascun (n_failed, has_time) i el millor candidat.
+
+    Empats es resolen preferint ISO (etiqueta més clara) i després dayfirst
+    (format clínic europeu més habitual).
+    """
+    s = series.copy()
+    non_null_mask = s.notna() & ~s.astype(str).str.strip().isin(_NULL_STRINGS)
+    n_total = int(non_null_mask.sum())
+
+    candidates: dict[str, dict] = {}
+    for fmt in DATE_FORMATS:
+        parsed = _parse_dates(s, fmt)
+        n_failed = int((non_null_mask & parsed.isna()).sum())
+        try:
+            has_time = bool(
+                (
+                    (parsed.dt.hour != 0)
+                    | (parsed.dt.minute != 0)
+                    | (parsed.dt.second != 0)
+                ).any()
+            )
+        except Exception:
+            has_time = False
+        candidates[fmt] = {
+            "n_parsed": n_total - n_failed,
+            "n_failed": n_failed,
+            "has_time": has_time,
+            "label":    _DATE_FORMAT_LABELS[fmt],
+        }
+
+    zero_fail = [f for f in DATE_FORMATS if candidates[f]["n_failed"] == 0]
+    if zero_fail:
+        for preferred in ("iso", "dayfirst", "monthfirst"):
+            if preferred in zero_fail:
+                best = preferred
+                break
+    else:
+        priority = {"dayfirst": 0, "iso": 1, "monthfirst": 2}
+        best = min(DATE_FORMATS, key=lambda f: (candidates[f]["n_failed"], priority[f]))
+
+    # Mostres: 5 primers valors no nuls amb el seu parsing segons el millor candidat
+    parsed_best = _parse_dates(s, best)
+    sample_idx = s[non_null_mask].index[:5]
+    samples = []
+    for i in sample_idx:
+        raw = str(s.loc[i])
+        out = parsed_best.loc[i]
+        samples.append({
+            "raw":    raw,
+            "parsed": "" if pd.isna(out) else out.strftime("%Y-%m-%d %H:%M:%S"),
+            "ok":     bool(pd.notna(out)),
+        })
+
+    return {
+        "best":       best,
+        "n_total":    n_total,
+        "candidates": candidates,
+        "samples":    samples,
+    }
 
 
 # ── Normalització i validació ─────────────────────────────────────────────────
@@ -105,12 +192,22 @@ def profile_items(df: pd.DataFrame) -> list[dict]:
 
 # ── Transformació de dates ────────────────────────────────────────────────────
 
-def compute_date_deltas(df: pd.DataFrame) -> pd.DataFrame:
-    """Converteix 'data' a dies transcorreguts des de la primera visita de cada pacient."""
+def compute_date_deltas(df: pd.DataFrame, date_format: str = "iso") -> pd.DataFrame:
+    """
+    Converteix 'data' a minuts enters transcorreguts des de la primera visita
+    de cada pacient.
+
+    Si el timestamp original no porta hora (només data), el delta serà múltiple
+    de 1440 (minuts/dia). Si porta hora/minuts, es preserva la granularitat fina,
+    cosa que permet ordenar correctament visites del mateix dia.
+
+    Files amb timestamp no parsejable es queden com a <NA>.
+    """
     df     = df.copy()
-    parsed = pd.to_datetime(df["data"], errors="coerce")
+    parsed = _parse_dates(df["data"], date_format)
     ref    = parsed.groupby(df["pacient"]).transform("min")
-    df["data"] = (parsed - ref).dt.days.astype("Int64")
+    delta  = (parsed - ref).dt.total_seconds()
+    df["data"] = delta.div(60).round().astype("Int64")
     return df
 
 

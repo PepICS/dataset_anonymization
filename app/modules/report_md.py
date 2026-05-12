@@ -42,11 +42,13 @@ T = {
 "als noms canònics interns (`pacient`, `data`, `item`, `valor`), "
 "acceptant variantes habituals com `patient_id`, `variable`, `value`, etc."),
 "meth_step2_title":"Fase 2 — Transformació de dates",
-"meth_step2_body":("Totes les dates absolutes han estat substituïdes per un **delta enter de dies** "
+"meth_step2_body":("Totes les dates absolutes han estat substituïdes per un **delta enter de minuts** "
 "calculat com la diferència respecte a la primera visita de cada pacient. "
-"Això preserva els intervals temporals clínicament rellevants sense revelar dates absolutes.\n\n"
+"Això preserva els intervals temporals clínicament rellevants — incloent diferències intra-dia "
+"de minuts entre observacions — sense revelar dates absolutes.\n\n"
 "- Primera visita de cada pacient → valor `0`\n"
-"- Visites posteriors → nombre de dies transcorreguts des de la primera\n"
+"- Visites posteriors → nombre de minuts transcorreguts des de la primera\n"
+"- Si el timestamp original només contenia data (sense hora), el delta serà múltiple de 1440\n"
 "- Les dates originals no es conserven en cap forma al dataset de sortida"),
 "meth_step3_title":"Fase 3 — Pseudonimització de l'identificador de pacient",
 "meth_step3_body":("L'identificador de pacient ha estat substituït per un **hash SHA-256** "
@@ -147,7 +149,7 @@ T = {
 "per al tractament de dades de salut amb finalitats d'investigació:\n\n"
 "| Capa | Tipus | Protecció aportada |\n"
 "|------|-------|--------------------|\n"
-"| Tècnica | K-anonimitat + hash + delta dates + generalització | Impossibilitat matemàtica de singularització |\n"
+"| Tècnica | K-anonimitat + hash + delta de minuts + generalització | Impossibilitat matemàtica de singularització |\n"
 "| Estadística | Incertesa de mostreig | Incertesa sobre la presència de cada individu |\n"
 "| Organitzacional | DUA + entorn segur ISCIII + participants acreditats | Control d'accés i responsabilitat legal |\n\n"
 "**El dataset resultant d'aquest procés és apte per al seu ús en el Datathon.**"),
@@ -205,9 +207,14 @@ T["es"] = {
 "meth_step1_title":"Fase 1 — Normalización de columnas",
 "meth_step1_body":"El sistema detectó automáticamente las columnas del CSV y las mapeó a los nombres canónicos internos, aceptando variantes habituales como `patient_id`, `variable`, `value`, etc.",
 "meth_step2_title":"Fase 2 — Transformación de fechas",
-"meth_step2_body":("Todas las fechas absolutas han sido sustituidas por un **delta entero de días** "
-"calculado como la diferencia respecto a la primera visita de cada paciente.\n\n"
-"- Primera visita → valor `0`\n- Visitas posteriores → días transcurridos\n- Las fechas originales no se conservan en ninguna forma"),
+"meth_step2_body":("Todas las fechas absolutas han sido sustituidas por un **delta entero de minutos** "
+"calculado como la diferencia respecto a la primera visita de cada paciente. "
+"Esto preserva los intervalos temporales clínicamente relevantes — incluyendo diferencias "
+"intra-día de minutos entre observaciones — sin revelar fechas absolutas.\n\n"
+"- Primera visita → valor `0`\n"
+"- Visitas posteriores → minutos transcurridos desde la primera\n"
+"- Si el timestamp original solo contenía fecha (sin hora), el delta será múltiplo de 1440\n"
+"- Las fechas originales no se conservan en ninguna forma"),
 "meth_step3_title":"Fase 3 — Seudonimización del identificador de paciente",
 "meth_step3_body":("El identificador de paciente ha sido sustituido por un **hash SHA-256** truncado "
 "(12 caracteres hex, prefijo `H-`). Transformación **irreversible**: es computacionalmente "
@@ -293,7 +300,7 @@ T["es"] = {
 "para el tratamiento de datos de salud con fines de investigación:\n\n"
 "| Capa | Tipo | Protección aportada |\n"
 "|------|------|---------------------|\n"
-"| Técnica | K-anonimidad + hash + delta fechas + generalización | Imposibilidad matemática de singularización |\n"
+"| Técnica | K-anonimidad + hash + delta de minutos + generalización | Imposibilidad matemática de singularización |\n"
 "| Estadística | Incertidumbre de muestreo | Incertidumbre sobre la presencia de cada individuo |\n"
 "| Organizacional | DUA + entorno seguro ISCIII + participantes acreditados | Control de acceso y responsabilidad legal |\n\n"
 "**El dataset resultante de este proceso es apto para su uso en el Datathon.**"),
@@ -346,9 +353,14 @@ T["en"] = {
 "meth_step1_title":"Phase 1 — Column Normalization",
 "meth_step1_body":"The system automatically detected CSV columns and mapped them to internal canonical names, accepting common variants such as `patient_id`, `variable`, `value`, etc.",
 "meth_step2_title":"Phase 2 — Date Transformation",
-"meth_step2_body":("All absolute dates were replaced by an **integer day delta** computed "
-"as the difference from each patient's first visit.\n\n"
-"- First visit → value `0`\n- Subsequent visits → days elapsed\n- Original dates are not retained in any form"),
+"meth_step2_body":("All absolute dates were replaced by an **integer minute delta** computed "
+"as the difference from each patient's first visit. This preserves clinically relevant "
+"temporal intervals — including intra-day, minute-level differences between observations — "
+"without revealing absolute dates.\n\n"
+"- First visit → value `0`\n"
+"- Subsequent visits → minutes elapsed since the first visit\n"
+"- If the original timestamp had no time component, the delta will be a multiple of 1440\n"
+"- Original dates are not retained in any form"),
 "meth_step3_title":"Phase 3 — Patient Identifier Pseudonymization",
 "meth_step3_body":("The patient identifier was replaced by a **SHA-256 hash** "
 "(12 hex chars, prefix `H-`). This transformation is **irreversible**: "
@@ -436,7 +448,7 @@ T["en"] = {
 "processing for research purposes:\n\n"
 "| Layer | Type | Protection provided |\n"
 "|-------|------|---------------------|\n"
-"| Technical | K-anonymity + hash + date delta + generalization | Mathematical impossibility of singling out |\n"
+"| Technical | K-anonymity + hash + minute delta + generalization | Mathematical impossibility of singling out |\n"
 "| Statistical | Sampling uncertainty | Uncertainty about each individual's presence |\n"
 "| Organizational | DUA + secure ISCIII environment + accredited participants | Access control and legal accountability |\n\n"
 "**The dataset resulting from this process is suitable for use in the Datathon.**"),

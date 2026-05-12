@@ -93,13 +93,18 @@ All datasets share the canonical 4-column format (`pacient`, `data`, `item`, `va
 
 ## Input CSV format
 
-The tool accepts **one or more CSV files** in standard long format (one row per patient-date-variable). If a community's data is distributed across several tables or domains, all files can be uploaded at once. The tool concatenates them internally, applies the anonymization pipeline on the combined dataset, and returns one anonymized CSV per original file.
+The tool accepts **one or more CSV files** in standard long format (one row per patient-date-variable).
+
+> **⚠ One session = one dataset.** Multi-file mode is only for a single dataset split into thematic domains (same patient universe, different clinical variables in each file — e.g. social determinants in one file, functional autonomy in another). It is **not** for independent datasets such as one CSV per care line (primary care, hospital, long-term care). Independent datasets must be anonymized in **separate sessions**, otherwise the tool will mix their patient universes when applying k-anonymity. The frontend asks you to confirm this before processing when more than one file is uploaded.
+
+If your data is split into related domain files, you can upload them all at once. The tool concatenates them internally, applies the anonymization pipeline on the combined dataset, and returns one anonymized CSV per original file.
 
 **Requirements when uploading multiple files:**
 
 - Each file must have **exactly 4 columns**: `pacient`, `data`, `item`, `valor`
 - All files must share the **same patient identifier** (same values in the `pacient` column for the same patient)
 - Variables must **not overlap** between files — each clinical variable should appear in only one file
+- All files must describe the **same population** — if they don't (independent datasets, different care lines, different cohorts), process them in separate sessions
 
 Column names are automatically detected via alias matching:
 
@@ -138,6 +143,8 @@ P0001,2023-03-28,estado_cognitivo,deterioro_moderado
 - Accepts UTF-8, Latin-1, CP1252 encodings
 - Automatically detects variable type (numeric vs. categorical)
 - Shows statistics, value distribution and data preview
+- **Timestamp format auto-detection**: tries ISO 8601, day-first (`DD/MM/YYYY`) and month-first (`MM/DD/YYYY`) on the `data` column, picks the format with fewest parse failures, and previews five sample values so you can override the choice if the interpretation is wrong. Timestamps with hours/minutes are supported and preserved at minute resolution.
+- **Multi-file safety check**: when more than one CSV is uploaded, the UI shows per-file stats (records, unique patients, variables), the share of patients common to all files, and a list of variables appearing in more than one file. A confirmation checkbox is required before continuing — see [Input CSV format](#input-csv-format).
 
 ### Phase 2 — Variable classification
 
@@ -146,7 +153,7 @@ For each variable, the user indicates its role:
 | Role | Automatic treatment |
 |------|---------------------|
 | 🔑 Direct identifier (`pacient`) | Irreversible SHA-256 hash (prefix `H-`) |
-| 📅 Date (`data`) | Integer delta: days since each patient's first visit |
+| 📅 Date (`data`) | Integer delta in **minutes** since each patient's first visit (preserves intra-day differences) |
 | 🔍 Quasi-identifier | User-defined generalization + k-anonymity |
 | ✅ Non-identifying | No changes |
 
@@ -179,7 +186,7 @@ The protection offered by this process rests on **three independent and compleme
 | Transformation | Protection |
 |---------------|------------|
 | SHA-256 hash on patient ID | Irreversible pseudonymisation |
-| Date → integer delta | Absolute dates destroyed |
+| Timestamp → integer minute delta (per patient) | Absolute dates destroyed; intra-day patterns preserved |
 | Quasi-identifier generalization | Cross-linkage granularity eliminated |
 | K-anonymity | Mathematical impossibility of singling out |
 
@@ -204,8 +211,7 @@ The datathon dataset is a **random sample** of a much larger population. A poten
 |------|--------|-----|
 | `*_anonymized.csv` | CSV | Datathon participants (single file upload) |
 | `datasets_anonymized.zip` | ZIP | Datathon participants (multiple file upload — one CSV per original file) |
-| `*_report.html` | Styled HTML | DPO (printable as PDF from browser) |
-| `*_report.md` | Markdown | Repository / technical documentation |
+| `*_report.html` (single file) / `anonymization_report.html` (multi-file) | Styled HTML | DPO (printable as PDF from browser) |
 | `anonymization_report.json` | JSON | Audit and traceability |
 
 ### DPO report
@@ -246,11 +252,11 @@ datathon-anonymizer/
 │   └── README.ca.md               # Catalan README
 │
 ├── sample_data/
-│   ├── dataset_500p.csv           # Synthetic dataset — 500 patients
-│   ├── dataset_2000p.csv          # Synthetic dataset — 2,000 patients
-│   └── Cataluña_Unificado.xlsx    # Reference clinical variables Excel
+│   ├── dataset_2000p.csv          # Synthetic dataset — 2,000 patients (single file)
+│   └── 1_… 4_….csv               # Same 2,000 patients split across 4 thematic files
 │
-├── generate_synthetic.py          # Script to regenerate synthetic datasets
+├── generate_synthetic.py          # Script to regenerate the single-file dataset
+├── generate_multifile_sample.py   # Script to regenerate the 4 thematic files
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -282,11 +288,11 @@ The interface is available in **Catalan**, **Spanish** and **English**. Language
 
 ## Synthetic dataset generation
 
-The `generate_synthetic.py` script generates single-file test datasets, and `generate_multifile_sample.py` generates a 4-file split version (same 500 patients, 65 variables distributed across 4 thematic CSV files) — ideal for testing the multi-file upload feature:
+`generate_synthetic.py` produces the single-file dataset of 2,000 patients × 2 visits × 65 variables. `generate_multifile_sample.py` produces a 4-file split of the *same* 2,000 patients with the 65 variables distributed across 4 thematic files — ideal for testing the multi-file upload feature:
 
 ```bash
-python3 generate_synthetic.py          # → dataset_500p.csv, dataset_2000p.csv
-python3 generate_multifile_sample.py   # → 4 thematic CSV files in sample_data/
+python3 generate_synthetic.py          # → sample_data/dataset_2000p.csv
+python3 generate_multifile_sample.py   # → sample_data/1_…csv … 4_…csv (2,000 patients each)
 ```
 
 ---

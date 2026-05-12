@@ -1,14 +1,14 @@
 """
 generate_synthetic.py
 ---------------------
-Genera un dataset sintètic de 500 pacients × 2 visites × 65 variables clíniques.
+Genera un dataset sintètic de 2.000 pacients × 2 visites × 65 variables clíniques.
 Els noms de variable s'extreuen directament de l'Excel de referència
 (sample_data/Cataluña_Unificado.xlsx) i es netegen:
   - S'elimina el contingut entre parèntesis  →  "Etapa vital (desc...)" → "etapa_vital"
   - Es normalitzen accents i caràcters especials
   - Es minusculitza i s'estandarditza com a slug
 
-Resultat: sample_data/dataset_500p.csv
+Resultat: sample_data/dataset_2000p.csv
 Format:   patient_id | data | variable | valor
 """
 
@@ -208,9 +208,9 @@ def _gen_value(var: str, domain: dict, patient_profile: dict) -> str | None:
 
 def generate_dataset(
     variables: list[str],
-    n_patients: int = 500,
+    n_patients: int = 2000,
     visits_per_patient: int = 2,
-    output_path: str = "sample_data/dataset_500p.csv",
+    output_path: str = "sample_data/dataset_2000p.csv",
 ):
     domains = _make_domains(variables)
     rows    = []
@@ -270,4 +270,4 @@ if __name__ == "__main__":
             "ansiedad", "depresion", "polifarmacia", "medicacion_de_alto_riesgo",
         ]
 
-    generate_dataset(variables, n_patients=500, visits_per_patient=2)
+    generate_dataset(variables, n_patients=2000, visits_per_patient=2)

@@ -70,13 +70,18 @@ Todos los datasets siguen el formato canónico de 4 columnas (`pacient`, `data`,
 
 ## Formato del CSV de entrada
 
-La herramienta acepta **uno o más ficheros CSV** en formato largo (una fila por paciente-fecha-variable). Si los datos de la comunidad están repartidos en varias tablas o dominios, se pueden subir todos a la vez. La herramienta los combina internamente y devuelve un CSV anonimizado por cada fichero original.
+La herramienta acepta **uno o más ficheros CSV** en formato largo (una fila por paciente-fecha-variable).
+
+> **⚠ Una sesión = un dataset.** El modo multi-fichero es solo para un mismo dataset dividido en dominios temáticos (mismo universo de pacientes, variables clínicas distintas en cada fichero — p. ej. determinantes sociales en uno, autonomía funcional en otro). **No** es para datasets independientes como un CSV por línea asistencial (atención primaria, hospitalaria, sociosanitaria). Los datasets independientes deben anonimizarse en **sesiones separadas**; de lo contrario, la herramienta mezclará sus universos de pacientes al aplicar la k-anonimidad. El frontend te pide confirmarlo antes de procesar cuando subes más de un fichero.
+
+Si tus datos están repartidos en ficheros temáticos relacionados, puedes subirlos todos a la vez. La herramienta los combina internamente y devuelve un CSV anonimizado por cada fichero original.
 
 **Requisitos cuando se suben múltiples ficheros:**
 
 - Cada fichero debe tener **exactamente 4 columnas**: `pacient`, `data`, `item`, `valor`
 - Todos los ficheros deben compartir el **mismo identificador de paciente**
 - Las variables **no deben repetirse** entre ficheros
+- Todos los ficheros deben describir la **misma población** — si no es así (datasets independientes, líneas asistenciales distintas, cohortes distintas), procesa cada uno en una sesión separada
 
 La aplicación detecta automáticamente las variantes del nombre de columna y las normaliza internamente. El nombre de las variables clínicas puede ser cualquiera — la app se adapta al contenido de cada fichero.
 
@@ -106,6 +111,8 @@ P0001,2023-03-28,estado_cognitivo,deterioro_moderado
 - Acepta codificaciones UTF-8, Latin-1, CP1252
 - Detecta automáticamente el tipo de cada variable (numérica vs. categórica)
 - Muestra estadísticas, distribución de valores y previsualización
+- **Auto-detección del formato de timestamp**: prueba ISO 8601, day-first (`DD/MM/AAAA`) y month-first (`MM/DD/AAAA`) sobre la columna `data`, escoge el formato con menos errores de parsing y muestra cinco valores de ejemplo para que puedas forzar otra opción si la interpretación no es correcta. Se admiten timestamps con hora/minuto y se conservan con resolución de minutos.
+- **Comprobación de seguridad multi-fichero**: al subir más de un CSV, la interfaz muestra estadísticas por fichero (registros, pacientes únicos, variables), la proporción de pacientes comunes a todos los ficheros y la lista de variables que aparecen en más de uno. Se requiere marcar una casilla de confirmación antes de continuar — ver [Formato del CSV de entrada](#formato-del-csv-de-entrada).
 
 ### Fase 2 — Clasificación de variables
 
@@ -114,7 +121,7 @@ Para cada variable, el usuario indica su rol:
 | Rol | Tratamiento automático |
 |-----|----------------------|
 | 🔑 Identificador directo (`pacient`) | Hash SHA-256 irreversible (prefijo `H-`) |
-| 📅 Fecha (`data`) | Delta entero: días desde la primera visita del paciente |
+| 📅 Fecha (`data`) | Delta entero en **minutos** desde la primera visita del paciente (preserva diferencias intra-día) |
 | 🔍 Cuasi-identificador | Generalización definida por el usuario + k-anonimidad |
 | ✅ No identificativo | Sin cambios |
 
@@ -147,7 +154,7 @@ La protección que ofrece este proceso se sustenta en **tres capas independiente
 | Transformación | Protección |
 |---------------|------------|
 | Hash SHA-256 del identificador | Seudonimización irreversible |
-| Fecha → delta entero | Fechas absolutas destruidas |
+| Timestamp → delta entero en minutos (por paciente) | Fechas absolutas destruidas; patrones intra-día preservados |
 | Generalización de cuasi-IDs | Granularidad de cruce eliminada |
 | K-anonimidad | Imposibilidad matemática de singularización |
 
@@ -188,8 +195,7 @@ Con 2.000 pacientes de una comunidad grande, `edad` + `sexo_y_o_genero` con k=3 
 |---------|---------|-----------|
 | `*_anonymized.csv` | CSV | Participantes (un solo fichero subido) |
 | `datasets_anonymized.zip` | ZIP | Participantes (múltiples ficheros — un CSV por fichero original) |
-| `*_report.html` | HTML estilizado | DPD (imprimible como PDF desde el navegador) |
-| `*_report.md` | Markdown | Repositorio / documentación técnica |
+| `*_report.html` (single) / `anonymization_report.html` (multi) | HTML estilizado | DPD (imprimible como PDF desde el navegador) |
 | `anonymization_report.json` | JSON | Auditoría y trazabilidad |
 
 ---
@@ -218,11 +224,11 @@ datathon-anonymizer/
 │   └── README.ca.md               # README en catalán
 │
 ├── sample_data/
-│   ├── dataset_500p.csv           # Dataset sintético — 500 pacientes
-│   ├── dataset_2000p.csv          # Dataset sintético — 2.000 pacientes
-│   └── Cataluña_Unificado.xlsx    # Excel de variables clínicas de referencia
+│   ├── dataset_2000p.csv          # Dataset sintético — 2.000 pacientes (un fichero)
+│   └── 1_… 4_….csv               # Los mismos 2.000 pacientes en 4 ficheros temáticos
 │
-├── generate_synthetic.py          # Script para regenerar datasets sintéticos
+├── generate_synthetic.py          # Script para regenerar el dataset de un fichero
+├── generate_multifile_sample.py   # Script para regenerar los 4 ficheros temáticos
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt

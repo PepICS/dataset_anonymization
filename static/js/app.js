@@ -12,6 +12,10 @@ var State = {
   items:           [],          // perfils dels ítems [{name, type, n_unique, values, stats, ...}]
   classifications: {},          // { item → 'quasi_id' | 'non_id' }
   generalizations: {},          // { item → { type, bins?, labels?, mapping?, unmapped_label? } }
+  dateFormat:      'iso',       // 'iso' | 'dayfirst' | 'monthfirst'
+  dateDetection:   null,        // { best, n_total, candidates, samples }
+  nFiles:          1,           // nombre de CSVs pujats
+  multifileConfirmed: false,    // gate per a multi-fitxer: confirmació explícita
 };
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
@@ -102,14 +106,20 @@ async function doUpload(files) {
     var data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Error');
 
-    State.sessionId = data.session_id;
-    State.items     = data.items;
-    State.nFiles    = data.n_files || 1;
+    State.sessionId          = data.session_id;
+    State.items              = data.items;
+    State.nFiles             = data.n_files || 1;
+    State.dateFormat         = data.date_format    || 'iso';
+    State.dateDetection      = data.date_detection || null;
+    State.multifileConfirmed = false;
 
     State.classifications = {};
     data.items.forEach(function(item){ State.classifications[item.name] = 'non_id'; });
 
     renderUpload(data);
+    renderDateFormat();
+    renderMultifileConfirm(data);
+    updateContinueGate();
   } catch(err) {
     showErr('upload-error', err.message);
     el('files-list').style.display = 'none';
@@ -160,6 +170,139 @@ function renderUpload(data) {
 function statBox(val, lbl, fontSize) {
   var fs = fontSize ? 'font-size:'+fontSize+';' : '';
   return '<div class="stat-box"><div class="val" style="'+fs+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>';
+}
+
+// ── Format de timestamp ───────────────────────────────────────────────────────
+function renderDateFormat() {
+  var det = State.dateDetection;
+  if (!det) { el('date-format-card').style.display = 'none'; return; }
+  el('date-format-card').style.display = 'block';
+
+  // Botons actius segons el format triat
+  document.querySelectorAll('#date-format-toggle .type-btn').forEach(function(b){
+    b.classList.toggle('active', b.getAttribute('data-fmt') === State.dateFormat);
+  });
+
+  // Mostres parsejades
+  var tbody = el('date-samples-table').querySelector('tbody');
+  tbody.innerHTML = (det.samples || []).map(function(s){
+    var ok    = s.ok && s.parsed;
+    var icon  = ok ? '✅' : '❌';
+    var pcell = ok ? esc(s.parsed) : '<span style="color:var(--danger);">' + t('dateUnparseable') + '</span>';
+    return '<tr>' +
+      '<td style="font-family:var(--mono);">' + esc(s.raw) + '</td>' +
+      '<td style="font-family:var(--mono);">' + icon + '&nbsp;' + pcell + '</td>' +
+      '</tr>';
+  }).join('');
+
+  // Avís si hi ha files no parsejables amb el format actiu
+  var cand     = (det.candidates || {})[State.dateFormat] || {};
+  var nFailed  = cand.n_failed || 0;
+  var nTotal   = det.n_total   || 0;
+  var hasTime  = cand.has_time;
+
+  var warning = el('date-format-warning');
+  if (nFailed > 0) {
+    warning.style.display = 'block';
+    warning.innerHTML = '⚠ ' + t('dateNatWarn1') + ' <strong>' + nFailed + '</strong> ' +
+                        t('dateNatWarn2') + ' ' + nTotal + ' ' + t('dateNatWarn3');
+  } else {
+    warning.style.display = 'none';
+  }
+
+  // Estadístiques sota la taula
+  var statsLine = nTotal + ' ' + t('dateStatRows') + ' · ' +
+                  (nTotal - nFailed) + ' ' + t('dateStatOk') + ' · ' +
+                  nFailed + ' ' + t('dateStatFail') + ' · ' +
+                  (hasTime ? t('dateStatHasTime') : t('dateStatNoTime'));
+  el('date-format-stats').textContent = statsLine;
+}
+
+// ── Confirmació multi-fitxer ──────────────────────────────────────────────────
+function renderMultifileConfirm(data) {
+  var card = el('multifile-confirm-card');
+  if (!card) return;
+
+  if (!data || (data.n_files || 1) < 2) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  el('multifile-n').textContent = data.n_files;
+
+  // Taula amb estadístiques per fitxer
+  var rows = (data.per_file_stats || []).map(function(s){
+    return '<tr>' +
+      '<td style="font-family:var(--mono);color:var(--accent);">' + esc(s.filename) + '</td>' +
+      '<td style="text-align:right;">' + s.n_records.toLocaleString()  + '</td>' +
+      '<td style="text-align:right;">' + s.n_patients.toLocaleString() + '</td>' +
+      '<td style="text-align:right;">' + s.n_items.toLocaleString()    + '</td>' +
+      '</tr>';
+  }).join('');
+  el('multifile-stats-table').querySelector('tbody').innerHTML = rows;
+
+  // Resum d'overlap
+  var rel = data.relationship || {};
+  var nShared = rel.n_patients_shared_all || 0;
+  var nUnion  = rel.n_patients_union      || 0;
+  var pct     = rel.pct_patients_shared   || 0;
+  var overlap = rel.overlapping_items     || [];
+
+  var color = pct >= 90 ? 'var(--success)' : (pct >= 50 ? 'var(--amber)' : 'var(--danger)');
+  var summary =
+    '<div>' + t('mfSharedPatients') + ': <strong style="color:' + color + ';">' + nShared.toLocaleString() + '</strong>' +
+    ' / ' + nUnion.toLocaleString() + ' (' + pct + '%)' +
+    ' <span style="color:var(--text-muted);">— ' + t('mfSharedHint') + '</span></div>';
+
+  if (overlap.length > 0) {
+    var sample = overlap.slice(0, 5).map(esc).join(', ');
+    var more   = overlap.length > 5 ? ' (+' + (overlap.length - 5) + ')' : '';
+    summary +=
+      '<div style="margin-top:0.4rem; color:var(--danger);">⚠ ' + t('mfOverlapWarn') +
+      ' <strong>' + overlap.length + '</strong> ' + t('mfOverlapWarn2') + ': ' + sample + more + '</div>';
+  }
+  el('multifile-overlap-summary').innerHTML = summary;
+
+  // Reset checkbox
+  var cb = el('multifile-confirm-checkbox');
+  if (cb) cb.checked = false;
+  State.multifileConfirmed = false;
+}
+
+function updateContinueGate() {
+  var cb  = el('multifile-confirm-checkbox');
+  var btn = el('phase1-continue-btn');
+  if (!btn) return;
+
+  if (State.nFiles > 1) {
+    State.multifileConfirmed = !!(cb && cb.checked);
+    btn.disabled = !State.multifileConfirmed;
+    btn.style.opacity = State.multifileConfirmed ? '1' : '0.5';
+    btn.style.cursor  = State.multifileConfirmed ? 'pointer' : 'not-allowed';
+  } else {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor  = 'pointer';
+  }
+}
+
+async function setDateFormat(fmt) {
+  if (!State.sessionId) return;
+  State.dateFormat = fmt;
+  // Render òptic immediat dels botons; samples es refresquen amb la resposta del backend
+  document.querySelectorAll('#date-format-toggle .type-btn').forEach(function(b){
+    b.classList.toggle('active', b.getAttribute('data-fmt') === fmt);
+  });
+  try {
+    var res = await api('/api/set-date-format', 'POST', {
+      session_id:  State.sessionId,
+      date_format: fmt,
+    });
+    State.dateDetection = res.date_detection;
+    renderDateFormat();
+  } catch(err) {
+    showErr('upload-error', err.message);
+  }
 }
 
 // ── FASE 2: Classificació ─────────────────────────────────────────────────────
@@ -537,11 +680,6 @@ function renderResults(m) {
       '<h3>'+t('downloadHTML')+'</h3>' +
       '<p>'+t('downloadHTMLSub')+'</p>' +
     '</a>' +
-    '<a class="download-card" href="/api/download/report/md/'+sid+'" download>' +
-      '<div class="download-icon">📝</div>' +
-      '<h3>'+t('downloadMD')+'</h3>' +
-      '<p>'+t('downloadMDSub')+'</p>' +
-    '</a>' +
     '<a class="download-card" href="/api/download/report/'+sid+'" download>' +
       '<div class="download-icon">📋</div>' +
       '<h3>'+t('downloadReport')+'</h3>' +
@@ -553,6 +691,10 @@ function renderResults(m) {
 function startOver() {
   if (State.sessionId) fetch('/api/session/'+State.sessionId,{method:'DELETE'}).catch(function(){});
   State.sessionId=null; State.items=[]; State.classifications={}; State.generalizations={};
+  State.dateFormat='iso'; State.dateDetection=null;
+  State.nFiles=1; State.multifileConfirmed=false;
+  var cb = el('multifile-confirm-checkbox'); if (cb) cb.checked = false;
+  var mfc = el('multifile-confirm-card');    if (mfc) mfc.style.display = 'none';
   el('upload-results').style.display='none';
   el('file-input').value='';
   el('results-section').style.display='none';

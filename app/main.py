@@ -33,6 +33,7 @@ from app.modules.anonymizer import (
     normalize_columns, validate_dataframe, profile_items,
     compute_date_deltas, hash_patient_ids, impute_missing_values,
     apply_generalizations, apply_k_anonymity, compute_metrics,
+    detect_date_format, DATE_FORMATS,
 )
 from app.modules.report_md   import generate_markdown_report
 from app.modules.report_html import generate_html_report
@@ -78,6 +79,10 @@ class AnonymizeRequest(BaseModel):
 class SimulateKRequest(BaseModel):
     session_id: str
 
+class DateFormatRequest(BaseModel):
+    session_id:  str
+    date_format: str
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -91,9 +96,12 @@ def _df_preview(df: pd.DataFrame) -> dict:
     preview = df[cols].head(PREVIEW_ROWS).copy().astype(str)
     return {"columns": list(preview.columns), "rows": preview.values.tolist()}
 
-def _date_range(df: pd.DataFrame) -> dict:
+def _date_range(df: pd.DataFrame, date_format: str = "iso") -> dict:
     try:
-        parsed = pd.to_datetime(df["data"], errors="coerce")
+        from app.modules.anonymizer import _parse_dates
+        parsed = _parse_dates(df["data"], date_format)
+        if parsed.notna().sum() == 0:
+            return {"min": None, "max": None}
         return {"min": str(parsed.min().date()), "max": str(parsed.max().date())}
     except Exception:
         return {"min": None, "max": None}
@@ -175,15 +183,64 @@ async def upload(files: List[UploadFile] = File(...)):
         # Dataset combinat
         df = pd.concat(dfs, ignore_index=True)
 
+        # ── Diagnòstic de relació entre fitxers ───────────────────────────────
+        # Es retorna al frontend perquè l'usuari pugui confirmar (quan N>1)
+        # si els fitxers pertanyen al mateix dataset o són datasets independents.
+        per_file_stats = []
+        per_file_patient_sets: list[set] = []
+        per_file_item_sets:    list[set] = []
+        for raw_df, fname in zip(dfs, filenames):
+            pset = set(raw_df["pacient"].dropna().astype(str).unique())
+            iset = set(raw_df["item"].dropna().astype(str).unique())
+            per_file_patient_sets.append(pset)
+            per_file_item_sets.append(iset)
+            per_file_stats.append({
+                "filename":   fname,
+                "n_records":  int(len(raw_df)),
+                "n_patients": int(len(pset)),
+                "n_items":    int(len(iset)),
+            })
+
+        if len(filenames) > 1:
+            shared_all = set.intersection(*per_file_patient_sets) if per_file_patient_sets else set()
+            union_all  = set.union(*per_file_patient_sets)       if per_file_patient_sets else set()
+            n_shared_all = len(shared_all)
+            n_union      = len(union_all)
+            pct_shared   = round(n_shared_all / n_union * 100, 1) if n_union else 0.0
+
+            # Variables que apareixen en més d'un fitxer
+            from collections import Counter
+            item_counter = Counter()
+            for iset in per_file_item_sets:
+                for it in iset:
+                    item_counter[it] += 1
+            overlapping_items = sorted([i for i, c in item_counter.items() if c > 1])
+
+            relationship = {
+                "n_patients_shared_all": n_shared_all,
+                "n_patients_union":      n_union,
+                "pct_patients_shared":   pct_shared,
+                "overlapping_items":     overlapping_items,
+                "n_overlapping_items":   len(overlapping_items),
+            }
+        else:
+            relationship = None
+
         items = profile_items(df)
-        dr    = _date_range(df)
-        sid   = str(uuid.uuid4())
+
+        # Detecció del format de timestamp (es pot sobreescriure des del front)
+        date_detection = detect_date_format(df["data"])
+        date_format    = date_detection["best"]
+        dr             = _date_range(df, date_format)
+        sid            = str(uuid.uuid4())
 
         sessions[sid] = {
             "df_original":     df,
             "filenames":       filenames,          # llista de noms originals
             "col_mapping":     col_mapping_global,
             "date_range":      dr,
+            "date_format":     date_format,
+            "date_detection":  date_detection,
             "items":           items,
             "classifications": {},
             "generalizations": {},
@@ -195,15 +252,19 @@ async def upload(files: List[UploadFile] = File(...)):
         }
 
         return {
-            "session_id":  sid,
-            "filenames":   filenames,
-            "n_files":     len(filenames),
-            "n_records":   len(df),
-            "n_patients":  int(df["pacient"].nunique()),
-            "n_items":     len(items),
-            "date_range":  dr,
-            "items":       items,
-            "preview":     _df_preview(df),
+            "session_id":      sid,
+            "filenames":       filenames,
+            "n_files":         len(filenames),
+            "n_records":       len(df),
+            "n_patients":      int(df["pacient"].nunique()),
+            "n_items":         len(items),
+            "date_range":      dr,
+            "date_format":     date_format,
+            "date_detection":  date_detection,
+            "items":           items,
+            "preview":         _df_preview(df),
+            "per_file_stats":  per_file_stats,
+            "relationship":    relationship,
         }
 
     except HTTPException:
@@ -211,6 +272,47 @@ async def upload(files: List[UploadFile] = File(...)):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, detail=str(e))
+
+
+# ── Endpoint 1b: Override del format de timestamp ────────────────────────────
+
+@app.post("/api/set-date-format")
+async def set_date_format(req: DateFormatRequest):
+    sess = _get_session(req.session_id)
+    if req.date_format not in DATE_FORMATS:
+        raise HTTPException(
+            400,
+            detail=f"date_format ha de ser un de: {', '.join(DATE_FORMATS)}",
+        )
+    sess["date_format"] = req.date_format
+
+    # Recalculem el rang de dates i mostres parsejades amb el nou format
+    sess["date_range"] = _date_range(sess["df_original"], req.date_format)
+    redetection = detect_date_format(sess["df_original"]["data"])
+    redetection["best"] = req.date_format     # respectem la tria manual
+    # Regenerem mostres amb el format escollit per l'usuari
+    from app.modules.anonymizer import _parse_dates
+    s = sess["df_original"]["data"]
+    parsed_user = _parse_dates(s, req.date_format)
+    non_null = s.notna() & ~s.astype(str).str.strip().isin({"", "nan", "NaN", "None"})
+    sample_idx = s[non_null].index[:5]
+    samples = []
+    for i in sample_idx:
+        out = parsed_user.loc[i]
+        samples.append({
+            "raw":    str(s.loc[i]),
+            "parsed": "" if pd.isna(out) else out.strftime("%Y-%m-%d %H:%M:%S"),
+            "ok":     bool(pd.notna(out)),
+        })
+    redetection["samples"] = samples
+    sess["date_detection"] = redetection
+
+    return {
+        "ok":             True,
+        "date_format":    req.date_format,
+        "date_range":     sess["date_range"],
+        "date_detection": redetection,
+    }
 
 
 # ── Endpoint 2: Classificació ─────────────────────────────────────────────────
@@ -242,7 +344,7 @@ async def simulate_k(req: SimulateKRequest):
         quasi = [k for k, v in sess["classifications"].items() if v == "quasi_id"]
         # Simulem sobre el dataset combinat (sense la columna interna)
         df_t  = sess["df_original"].drop(columns=[_SOURCE_COL], errors="ignore")
-        df_t  = compute_date_deltas(df_t)
+        df_t  = compute_date_deltas(df_t, date_format=sess.get("date_format", "iso"))
         if sess["generalizations"]:
             df_t = apply_generalizations(df_t, sess["generalizations"])
         df_t, _ = impute_missing_values(df_t, quasi)
@@ -286,7 +388,7 @@ async def anonymize(req: AnonymizeRequest):
         df_t = sess["df_original"].copy()
         df_core = df_t.drop(columns=[_SOURCE_COL])
 
-        df_core = compute_date_deltas(df_core)
+        df_core = compute_date_deltas(df_core, date_format=sess.get("date_format", "iso"))
         if generalizations:
             df_core = apply_generalizations(df_core, generalizations)
         df_core, imputation_log = impute_missing_values(df_core, quasi)
@@ -387,13 +489,24 @@ async def download_csv(session_id: str):
         return _stream(zip_bytes, "application/zip", "datasets_anonymized.zip")
 
 
+def _report_filename(filenames: list[str], ext: str) -> str:
+    """
+    Per a un sol fitxer pujat, l'informe pren el seu nom («dataset_X_report.html»).
+    Per a multi-fitxer, un nom genèric («anonymization_report.html») per evitar
+    que sembli que l'informe només cobreix el primer fitxer.
+    """
+    if filenames and len(filenames) == 1:
+        return filenames[0].replace(".csv", "") + f"_report.{ext}"
+    return f"anonymization_report.{ext}"
+
+
 @app.get("/api/download/report/html/{session_id}")
 async def download_html(session_id: str):
     sess = _get_session(session_id)
     if not sess.get("report_html"):
         raise HTTPException(400, "Cal executar l'anonimització primer.")
-    fbase = sess["filenames"][0].replace(".csv", "") if sess["filenames"] else "report"
-    return _stream(sess["report_html"], "text/html", f"{fbase}_report.html")
+    return _stream(sess["report_html"], "text/html",
+                   _report_filename(sess["filenames"], "html"))
 
 
 @app.get("/api/download/report/md/{session_id}")
@@ -401,8 +514,8 @@ async def download_md(session_id: str):
     sess = _get_session(session_id)
     if not sess.get("report_md"):
         raise HTTPException(400, "Cal executar l'anonimització primer.")
-    fbase = sess["filenames"][0].replace(".csv", "") if sess["filenames"] else "report"
-    return _stream(sess["report_md"], "text/markdown", f"{fbase}_report.md")
+    return _stream(sess["report_md"], "text/markdown",
+                   _report_filename(sess["filenames"], "md"))
 
 
 @app.get("/api/download/report/{session_id}")
@@ -412,6 +525,8 @@ async def download_json(session_id: str):
         raise HTTPException(400, "Cal executar l'anonimització primer.")
     report = {
         "filenames":       sess["filenames"],
+        "date_format":     sess.get("date_format"),
+        "date_range":      sess.get("date_range"),
         "classifications": sess["classifications"],
         "generalizations": sess["generalizations"],
         "metrics":         sess["metrics"],

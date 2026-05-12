@@ -70,13 +70,18 @@ Tots els datasets segueixen el format canònic de 4 columnes (`pacient`, `data`,
 
 ## Format del CSV d'entrada
 
-L'eina accepta **un o més fitxers CSV** en format llarg (una fila per pacient-data-variable). Si les dades de la comunitat estan repartides en diverses taules o dominis, es poden pujar tots alhora. L'eina els combina internament i retorna un CSV anonimitzat per cada fitxer original.
+L'eina accepta **un o més fitxers CSV** en format llarg (una fila per pacient-data-variable).
+
+> **⚠ Una sessió = un dataset.** El mode multi-fitxer és només per a un mateix dataset trossejat en dominis temàtics (mateix univers de pacients, variables clíniques diferents a cada fitxer — p. ex. determinants socials en un, autonomia funcional en un altre). **No** és per a datasets independents com un CSV per línia assistencial (atenció primària, hospitalària, sociosanitària). Els datasets independents s'han d'anonimitzar en **sessions separades**; si no, l'eina barrejarà els seus universos de pacients al aplicar la k-anonimitat. El frontend et demana confirmar-ho abans de processar quan puges més d'un fitxer.
+
+Si les teves dades estan repartides en fitxers temàtics relacionats, pots pujar-los tots alhora. L'eina els combina internament i retorna un CSV anonimitzat per cada fitxer original.
 
 **Requisits quan es pugen múltiples fitxers:**
 
 - Cada fitxer ha de tenir **exactament 4 columnes**: `pacient`, `data`, `item`, `valor`
 - Tots els fitxers han de compartir el **mateix identificador de pacient**
 - Les variables **no s'han de repetir** entre fitxers
+- Tots els fitxers han de descriure la **mateixa població** — si no és així (datasets independents, línies assistencials diferents, cohorts diferents), processa cadascun en una sessió separada
 
 L'aplicació detecta automàticament les variantes del nom de columna i les normalitza internament. El nom de les variables clíniques pot ser qualsevol — l'app s'adapta al contingut de cada fitxer.
 
@@ -106,6 +111,8 @@ P0001,2023-03-28,estado_cognitivo,deterioro_moderado
 - Accepta codificacions UTF-8, Latin-1, CP1252
 - Detecta automàticament el tipus de cada variable (numèrica vs. categòrica)
 - Mostra estadístiques, distribució de valors i previsualització
+- **Auto-detecció del format de timestamp**: prova ISO 8601, day-first (`DD/MM/AAAA`) i month-first (`MM/DD/AAAA`) sobre la columna `data`, escull el format amb menys errors de parsing i mostra cinc valors d'exemple perquè puguis forçar una altra opció si la interpretació no és correcta. S'admeten timestamps amb hora/minut i es conserven amb resolució de minuts.
+- **Comprovació de seguretat multi-fitxer**: en pujar més d'un CSV, la interfície mostra estadístiques per fitxer (registres, pacients únics, variables), la proporció de pacients comuns a tots els fitxers i la llista de variables que apareixen en més d'un. Cal marcar una casella de confirmació abans de continuar — vegeu [Format del CSV d'entrada](#format-del-csv-dentrada).
 
 ### Fase 2 — Classificació de variables
 
@@ -114,7 +121,7 @@ Per a cada variable, l'usuari indica el seu rol:
 | Rol | Tractament automàtic |
 |-----|---------------------|
 | 🔑 Identificador directe (`pacient`) | Hash SHA-256 irreversible (prefix `H-`) |
-| 📅 Data (`data`) | Delta enter: dies des de la primera visita del pacient |
+| 📅 Data (`data`) | Delta enter en **minuts** des de la primera visita del pacient (preserva diferències intra-dia) |
 | 🔍 Quasi-identificador | Generalització definida per l'usuari + k-anonimitat |
 | ✅ No identificatiu | Sense canvis |
 
@@ -147,7 +154,7 @@ La protecció que ofereix aquest procés es fonamenta en **tres capes independen
 | Transformació | Protecció |
 |--------------|-----------|
 | Hash SHA-256 de l'identificador | Pseudonimització irreversible |
-| Data → delta enter | Dates absolutes destruïdes |
+| Timestamp → delta enter en minuts (per pacient) | Dates absolutes destruïdes; patrons intra-dia preservats |
 | Generalització de quasi-IDs | Granularitat de creuament eliminada |
 | K-anonimitat | Impossibilitat matemàtica de singularització |
 
@@ -188,8 +195,7 @@ Amb 2.000 pacients d'una comunitat gran, `edad` + `sexo_y_o_genero` amb k=3 ofer
 |--------|--------|-----------|
 | `*_anonymized.csv` | CSV | Participants (un sol fitxer pujat) |
 | `datasets_anonymized.zip` | ZIP | Participants (múltiples fitxers — un CSV per fitxer original) |
-| `*_report.html` | HTML estilitzat | DPD (imprimible com a PDF des del navegador) |
-| `*_report.md` | Markdown | Repositori / documentació tècnica |
+| `*_report.html` (single) / `anonymization_report.html` (multi) | HTML estilitzat | DPD (imprimible com a PDF des del navegador) |
 | `anonymization_report.json` | JSON | Auditoria i traçabilitat |
 
 ---
@@ -218,11 +224,11 @@ datathon-anonymizer/
 │   └── README.ca.md               # Aquest fitxer
 │
 ├── sample_data/
-│   ├── dataset_500p.csv           # Dataset sintètic — 500 pacients
-│   ├── dataset_2000p.csv          # Dataset sintètic — 2.000 pacients
-│   └── Cataluña_Unificado.xlsx    # Excel de variables clíniques de referència
+│   ├── dataset_2000p.csv          # Dataset sintètic — 2.000 pacients (un fitxer)
+│   └── 1_… 4_….csv               # Els mateixos 2.000 pacients en 4 fitxers temàtics
 │
-├── generate_synthetic.py          # Script per regenerar datasets sintètics
+├── generate_synthetic.py          # Script per regenerar el dataset d'un fitxer
+├── generate_multifile_sample.py   # Script per regenerar els 4 fitxers temàtics
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
