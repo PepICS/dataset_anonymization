@@ -14,6 +14,7 @@ Nucli de la lògica d'anonimització:
 """
 
 import hashlib
+import re
 import pandas as pd
 import numpy as np
 
@@ -37,15 +38,21 @@ _DATE_FORMAT_LABELS = {
 }
 
 
+# Patró ISO 8601 al començament (YYYY-MM-DD…). Necessari per rebutjar inputs
+# clarament ISO quan l'usuari ha escollit dayfirst/monthfirst: pandas els parsejaria
+# silenciosament i la selecció de l'usuari quedaria sense efecte.
+_ISO_LIKE_RE = re.compile(r"^\s*\d{4}-\d{1,2}-\d{1,2}")
+
+
 def _parse_dates(series: pd.Series, fmt: str) -> pd.Series:
     """Parseja una sèrie segons el format escollit. Sempre retorna datetime64[ns]."""
     if fmt == "iso":
         # format="ISO8601" (pandas ≥ 2.0) — accepta data sola, data+hora, micros, zona horària
         return pd.to_datetime(series, format="ISO8601", errors="coerce", utc=False)
-    if fmt == "dayfirst":
-        return pd.to_datetime(series, dayfirst=True, errors="coerce")
-    if fmt == "monthfirst":
-        return pd.to_datetime(series, dayfirst=False, errors="coerce")
+    if fmt in ("dayfirst", "monthfirst"):
+        parsed = pd.to_datetime(series, dayfirst=(fmt == "dayfirst"), errors="coerce")
+        iso_mask = series.astype(str).str.match(_ISO_LIKE_RE).fillna(False)
+        return parsed.mask(iso_mask)
     # fallback: parsing per defecte de pandas
     return pd.to_datetime(series, errors="coerce")
 
