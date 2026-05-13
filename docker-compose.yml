@@ -23,7 +23,7 @@ services:
       dockerfile: Dockerfile
     container_name: datathon-anonymizer
     ports:
-      - "8000:8000"
+      - "8092:8000"
     volumes:
       - ./sample_data:/app/sample_data
     environment:

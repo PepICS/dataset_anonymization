@@ -29,14 +29,14 @@ Ningún dato sale del servidor. Todo se ejecuta en local, sin dependencia de ser
 
 ```bash
 # 1. Clona el repositorio
-git clone https://github.com/tu-usuario/datathon-anonymizer.git
-cd datathon-anonymizer
+git clone https://github.com/PepICS/dataset_anonymization.git
+cd dataset_anonymization
 
 # 2. Arranca la aplicación
 docker compose up --build -d
 
 # 3. Abre el navegador
-# → http://localhost:8000
+# → http://localhost:8092
 ```
 
 Para detener:

@@ -312,9 +312,15 @@ def apply_k_anonymity(df: pd.DataFrame, quasi_id_items: list[str], k: int) -> di
     qi_df = df[df["item"].isin(quasi_id_items)].copy()
     qi_df["valor"] = qi_df["valor"].astype(str)
 
+    # Reindex sobre tots els pacients del df: si un pacient no té cap fila per
+    # a cap QI, ha d'aparèixer al pivot amb "NaN" a tots els QI i passar pel
+    # filtre de k igual que qualsevol altre. Sense això, aquests pacients
+    # cauen silenciosament del recompte i n_suppressed + n_final < n_orig.
+    all_patients = df["pacient"].drop_duplicates()
     pivot = (
         qi_df.groupby(["pacient", "item"])["valor"]
-        .first().unstack(fill_value="NaN").reset_index()
+        .first().unstack(fill_value="NaN")
+        .reindex(all_patients, fill_value="NaN").reset_index()
     )
     for col in quasi_id_items:
         if col not in pivot.columns:

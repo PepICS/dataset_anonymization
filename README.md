@@ -38,7 +38,7 @@ cd dataset_anonymization
 docker compose up -d
 
 # 3. Open your browser
-# → http://localhost:8000
+# → http://localhost:8092
 ```
 
 ### Option B — Build from source (requires internet)

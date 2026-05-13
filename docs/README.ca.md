@@ -29,14 +29,14 @@ Cap dada surt del servidor. Tot s'executa en local, sense cap dependència de se
 
 ```bash
 # 1. Clona el repositori
-git clone https://github.com/el-teu-usuari/datathon-anonymizer.git
-cd datathon-anonymizer
+git clone https://github.com/PepICS/dataset_anonymization.git
+cd dataset_anonymization
 
 # 2. Arrenca l'aplicació
 docker compose up --build -d
 
 # 3. Obre el navegador
-# → http://localhost:8000
+# → http://localhost:8092
 ```
 
 Per aturar:
