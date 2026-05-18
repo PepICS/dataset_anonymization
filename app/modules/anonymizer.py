@@ -28,6 +28,17 @@ COL_ALIASES = {
 
 _NULL_STRINGS = {"", "nan", "NaN", "None"}
 
+
+def _coerce_str(series: pd.Series) -> pd.Series:
+    """Casteja a str preservant NaN.
+
+    Necessari als identificadors textuals (`pacient`, `item`): sense això,
+    operacions com `sorted(series.unique())`, `groupby(...)` o `unstack()`
+    fallen amb `TypeError: '<' not supported between instances of 'float'
+    and 'str'` quan la columna barreja tipus (NaN+str, int+str, ...).
+    """
+    return series.where(series.isna(), series.astype(str))
+
 # ── Detecció i parsing de format de timestamp ────────────────────────────────
 DATE_FORMATS = ("iso", "dayfirst", "monthfirst")
 
@@ -124,7 +135,13 @@ def detect_date_format(series: pd.Series) -> dict:
 # ── Normalització i validació ─────────────────────────────────────────────────
 
 def normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Renombra les columnes als noms canònics. Retorna (df, mapping original→canònic)."""
+    """Renombra les columnes als noms canònics i estabilitza els tipus.
+
+    A més del rename, casteja `pacient` i `item` a str (preservant NaN) perquè
+    qualsevol sort/groupby/unstack downstream no peti si la columna barreja
+    tipus (NaN+str, int+str). `valor` no es toca: pot legítimament barrejar
+    numèrics i categòrics i ja s'estringa puntualment on cal.
+    """
     rename_map = {}
     cols_lower = {c: c.strip().lower() for c in df.columns}
     for canonical, aliases in COL_ALIASES.items():
@@ -134,6 +151,9 @@ def normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
                 break
     if rename_map:
         df = df.rename(columns=rename_map)
+    for col in ("pacient", "item"):
+        if col in df.columns:
+            df[col] = _coerce_str(df[col])
     return df, rename_map
 
 
@@ -163,8 +183,9 @@ def _is_numeric(series: pd.Series) -> bool:
 def profile_items(df: pd.DataFrame) -> list[dict]:
     """Retorna el perfil estadístic de cada ítem únic del dataset."""
     profiles = []
-    for item_name in sorted(df["item"].unique()):
-        subset  = df[df["item"] == item_name]["valor"]
+    item_str = _coerce_str(df["item"])
+    for item_name in sorted(item_str.dropna().unique()):
+        subset  = df.loc[item_str == item_name, "valor"]
         is_num  = _is_numeric(subset)
         profile = {
             "name":      item_name,
@@ -211,6 +232,7 @@ def compute_date_deltas(df: pd.DataFrame, date_format: str = "iso") -> pd.DataFr
     Files amb timestamp no parsejable es queden com a <NA>.
     """
     df     = df.copy()
+    df["pacient"] = _coerce_str(df["pacient"])
     parsed = _parse_dates(df["data"], date_format)
     ref    = parsed.groupby(df["pacient"]).transform("min")
     delta  = (parsed - ref).dt.total_seconds()
@@ -316,6 +338,9 @@ def apply_k_anonymity(df: pd.DataFrame, quasi_id_items: list[str], k: int) -> di
             "warning": "Cap quasi-identificador definit.",
         }
 
+    df = df.copy()
+    df["pacient"] = _coerce_str(df["pacient"])
+    df["item"]    = _coerce_str(df["item"])
     qi_df = df[df["item"].isin(quasi_id_items)].copy()
     qi_df["valor"] = qi_df["valor"].astype(str)
 
