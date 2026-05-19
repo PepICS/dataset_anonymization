@@ -34,6 +34,7 @@ from app.modules.anonymizer import (
     compute_date_deltas, hash_patient_ids, impute_missing_values,
     apply_generalizations, apply_k_anonymity, compute_metrics,
     detect_date_format, DATE_FORMATS,
+    propose_mapping, apply_user_mapping,
 )
 from app.modules.report_md   import generate_markdown_report
 from app.modules.report_html import generate_html_report
@@ -83,6 +84,10 @@ class DateFormatRequest(BaseModel):
     session_id:  str
     date_format: str
 
+class ConfirmMappingRequest(BaseModel):
+    session_id: str
+    mappings:   dict[str, dict[str, str]]   # {filename: {canonical: raw_col}}
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -94,6 +99,13 @@ def _get_session(sid: str) -> dict:
 def _df_preview(df: pd.DataFrame) -> dict:
     cols = [c for c in df.columns if c != _SOURCE_COL]
     preview = df[cols].head(PREVIEW_ROWS).copy().astype(str)
+    return {"columns": list(preview.columns), "rows": preview.values.tolist()}
+
+def _df_preview_raw(df: pd.DataFrame) -> dict:
+    """Preview amb els noms de columna originals (abans del rename). S'usa al
+    pas de confirmació del mapatge perquè l'usuari vegi exactament què té al
+    seu CSV."""
+    preview = df.head(PREVIEW_ROWS).copy().astype(str)
     return {"columns": list(preview.columns), "rows": preview.values.tolist()}
 
 def _date_range(df: pd.DataFrame, date_format: str = "iso") -> dict:
@@ -147,131 +159,238 @@ async def root():
 async def upload(files: List[UploadFile] = File(...)):
     """
     Accepta un o més fitxers CSV en format llarg estàndard (4 columnes).
-    Els concatena internament afegint una columna '_source_file' per
-    identificar l'origen de cada fila. El perfilat d'ítems és global
-    sobre el dataset combinat.
+
+    Per a cada fitxer es proposa un mapatge canonical → raw_col:
+      1. Coincidència per àlies (`patient_id` → `pacient`, `fecha` → `data`, ...).
+      2. Si en falta algun, fallback posicional (1a → pacient, 2a → data, ...).
+
+    Si TOTS els fitxers tenen els 4 canonicals coberts pel pas 1, es continua
+    com sempre i es retorna `status: "ok"` amb tot el perfilat.
+
+    Si algun fitxer requereix fallback posicional, es deixa la sessió en estat
+    pendent i es retorna `status: "needs_mapping"` amb la proposta + preview
+    per fitxer. El frontend l'ensenya i confirma via /api/confirm-mapping.
     """
     try:
         if not files:
             raise HTTPException(400, "Cal adjuntar almenys un fitxer CSV.")
 
-        dfs        = []
-        filenames  = []
-        col_mapping_global = {}
+        files_info: list[dict] = []
+        needs_confirmation = False
 
         for upload_file in files:
             content = await upload_file.read()
             df_raw  = _read_csv(content)
-            df_raw, col_mapping = normalize_columns(df_raw)
+            raw_columns = list(df_raw.columns)
 
-            errors = validate_dataframe(df_raw)
-            if errors:
+            if len(raw_columns) < 4:
                 raise HTTPException(
                     400,
-                    detail=f"Fitxer '{upload_file.filename}': {' | '.join(errors)}"
+                    detail=(
+                        f"Fitxer '{upload_file.filename}': cal almenys 4 columnes "
+                        f"(pacient, data, item, valor); se n'han trobat {len(raw_columns)}."
+                    ),
                 )
 
-            df_raw[_SOURCE_COL] = upload_file.filename
-            dfs.append(df_raw)
-            filenames.append(upload_file.filename)
-
-            # Merge col_mapping (el primer fitxer que mapeja una columna és el referent)
-            for orig, canon in col_mapping.items():
-                if canon not in col_mapping_global.values():
-                    col_mapping_global[orig] = canon
-
-        # Dataset combinat
-        df = pd.concat(dfs, ignore_index=True)
-
-        # ── Diagnòstic de relació entre fitxers ───────────────────────────────
-        # Es retorna al frontend perquè l'usuari pugui confirmar (quan N>1)
-        # si els fitxers pertanyen al mateix dataset o són datasets independents.
-        per_file_stats = []
-        per_file_patient_sets: list[set] = []
-        per_file_item_sets:    list[set] = []
-        for raw_df, fname in zip(dfs, filenames):
-            pset = set(raw_df["pacient"].dropna().astype(str).unique())
-            iset = set(raw_df["item"].dropna().astype(str).unique())
-            per_file_patient_sets.append(pset)
-            per_file_item_sets.append(iset)
-            per_file_stats.append({
-                "filename":   fname,
-                "n_records":  int(len(raw_df)),
-                "n_patients": int(len(pset)),
-                "n_items":    int(len(iset)),
+            mapping, alias_complete = propose_mapping(raw_columns)
+            files_info.append({
+                "filename":         upload_file.filename,
+                "df_raw":           df_raw,
+                "raw_columns":      raw_columns,
+                "proposed_mapping": mapping,
+                "alias_complete":   alias_complete,
             })
+            if not alias_complete:
+                needs_confirmation = True
 
-        if len(filenames) > 1:
-            shared_all = set.intersection(*per_file_patient_sets) if per_file_patient_sets else set()
-            union_all  = set.union(*per_file_patient_sets)       if per_file_patient_sets else set()
-            n_shared_all = len(shared_all)
-            n_union      = len(union_all)
-            pct_shared   = round(n_shared_all / n_union * 100, 1) if n_union else 0.0
+        sid = str(uuid.uuid4())
 
-            # Variables que apareixen en més d'un fitxer
-            from collections import Counter
-            item_counter = Counter()
-            for iset in per_file_item_sets:
-                for it in iset:
-                    item_counter[it] += 1
-            overlapping_items = sorted([i for i, c in item_counter.items() if c > 1])
-
-            relationship = {
-                "n_patients_shared_all": n_shared_all,
-                "n_patients_union":      n_union,
-                "pct_patients_shared":   pct_shared,
-                "overlapping_items":     overlapping_items,
-                "n_overlapping_items":   len(overlapping_items),
+        if needs_confirmation:
+            sessions[sid] = {"_pending_mapping": files_info}
+            return {
+                "session_id": sid,
+                "status":     "needs_mapping",
+                "files": [
+                    {
+                        "filename":         f["filename"],
+                        "raw_columns":      f["raw_columns"],
+                        "proposed_mapping": f["proposed_mapping"],
+                        "alias_complete":   f["alias_complete"],
+                        "preview":          _df_preview_raw(f["df_raw"]),
+                    }
+                    for f in files_info
+                ],
             }
-        else:
-            relationship = None
 
-        items = profile_items(df)
-
-        # Detecció del format de timestamp (es pot sobreescriure des del front)
-        date_detection = detect_date_format(df["data"])
-        date_format    = date_detection["best"]
-        dr             = _date_range(df, date_format)
-        sid            = str(uuid.uuid4())
-
-        sessions[sid] = {
-            "df_original":     df,
-            "filenames":       filenames,          # llista de noms originals
-            "col_mapping":     col_mapping_global,
-            "date_range":      dr,
-            "date_format":     date_format,
-            "date_detection":  date_detection,
-            "items":           items,
-            "classifications": {},
-            "generalizations": {},
-            "dfs_anonymized":  None,               # dict {filename → df} després d'anonimitzar
-            "metrics":         None,
-            "imputation_log":  {},
-            "report_md":       None,
-            "report_html":     None,
-        }
-
-        return {
-            "session_id":      sid,
-            "filenames":       filenames,
-            "n_files":         len(filenames),
-            "n_records":       len(df),
-            "n_patients":      int(df["pacient"].nunique()),
-            "n_items":         len(items),
-            "date_range":      dr,
-            "date_format":     date_format,
-            "date_detection":  date_detection,
-            "items":           items,
-            "preview":         _df_preview(df),
-            "per_file_stats":  per_file_stats,
-            "relationship":    relationship,
-        }
+        mappings = {f["filename"]: f["proposed_mapping"] for f in files_info}
+        return _finalize_upload(sid, files_info, mappings)
 
     except HTTPException:
         raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, detail=str(e))
+
+
+@app.post("/api/confirm-mapping")
+async def confirm_mapping(req: ConfirmMappingRequest):
+    """Aplica el mapatge confirmat per l'usuari a una sessió pendent i continua
+    amb el perfilat. Valida que cada fitxer tingui els 4 canonicals coberts,
+    sense duplicats, i amb columnes que existeixin al CSV original."""
+    if (
+        req.session_id not in sessions
+        or "_pending_mapping" not in sessions[req.session_id]
+    ):
+        raise HTTPException(404, "Sessió pendent de confirmació no trobada o ja confirmada.")
+
+    files_info = sessions[req.session_id]["_pending_mapping"]
+    canonicals = ("pacient", "data", "item", "valor")
+
+    for f in files_info:
+        m = req.mappings.get(f["filename"])
+        if not m:
+            raise HTTPException(400, f"Manca mapatge per al fitxer '{f['filename']}'.")
+        missing = [c for c in canonicals if not m.get(c)]
+        if missing:
+            raise HTTPException(
+                400,
+                detail=(
+                    f"Fitxer '{f['filename']}': cal assignar una columna a "
+                    f"{', '.join(missing)}."
+                ),
+            )
+        values = [m[c] for c in canonicals]
+        if len(set(values)) != len(values):
+            raise HTTPException(
+                400,
+                detail=(
+                    f"Fitxer '{f['filename']}': no es pot assignar la mateixa "
+                    "columna a més d'un camp."
+                ),
+            )
+        unknown = [v for v in values if v not in f["raw_columns"]]
+        if unknown:
+            raise HTTPException(
+                400,
+                detail=(
+                    f"Fitxer '{f['filename']}': columnes desconegudes "
+                    f"({', '.join(unknown)})."
+                ),
+            )
+
+    return _finalize_upload(req.session_id, files_info, req.mappings)
+
+
+def _finalize_upload(
+    sid: str,
+    files_info: list[dict],
+    mappings: dict[str, dict[str, str]],
+) -> dict:
+    """Aplica els mapatges definitius, concatena, perfila i deixa la sessió en
+    l'estat estàndard d'upload. Compartit entre el cas àlies-complet (auto) i
+    el cas que l'usuari ha confirmat el mapatge via /api/confirm-mapping."""
+    dfs                = []
+    filenames          = []
+    col_mapping_global: dict[str, str] = {}
+
+    for info in files_info:
+        fname   = info["filename"]
+        mapping = mappings[fname]
+        df = apply_user_mapping(info["df_raw"].copy(), mapping)
+
+        errors = validate_dataframe(df)
+        if errors:
+            raise HTTPException(400, detail=f"Fitxer '{fname}': {' | '.join(errors)}")
+
+        df[_SOURCE_COL] = fname
+        dfs.append(df)
+        filenames.append(fname)
+
+        for canon, raw in mapping.items():
+            if raw and canon not in col_mapping_global.values():
+                col_mapping_global[raw] = canon
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    # ── Diagnòstic de relació entre fitxers (només té sentit si N > 1) ────────
+    per_file_stats = []
+    per_file_patient_sets: list[set] = []
+    per_file_item_sets:    list[set] = []
+    for raw_df, fname in zip(dfs, filenames):
+        pset = set(raw_df["pacient"].dropna().astype(str).unique())
+        iset = set(raw_df["item"].dropna().astype(str).unique())
+        per_file_patient_sets.append(pset)
+        per_file_item_sets.append(iset)
+        per_file_stats.append({
+            "filename":   fname,
+            "n_records":  int(len(raw_df)),
+            "n_patients": int(len(pset)),
+            "n_items":    int(len(iset)),
+        })
+
+    if len(filenames) > 1:
+        shared_all = set.intersection(*per_file_patient_sets) if per_file_patient_sets else set()
+        union_all  = set.union(*per_file_patient_sets)       if per_file_patient_sets else set()
+        n_shared_all = len(shared_all)
+        n_union      = len(union_all)
+        pct_shared   = round(n_shared_all / n_union * 100, 1) if n_union else 0.0
+
+        from collections import Counter
+        item_counter = Counter()
+        for iset in per_file_item_sets:
+            for it in iset:
+                item_counter[it] += 1
+        overlapping_items = sorted([i for i, c in item_counter.items() if c > 1])
+
+        relationship = {
+            "n_patients_shared_all": n_shared_all,
+            "n_patients_union":      n_union,
+            "pct_patients_shared":   pct_shared,
+            "overlapping_items":     overlapping_items,
+            "n_overlapping_items":   len(overlapping_items),
+        }
+    else:
+        relationship = None
+
+    items          = profile_items(df)
+    date_detection = detect_date_format(df["data"])
+    date_format    = date_detection["best"]
+    dr             = _date_range(df, date_format)
+
+    sessions[sid] = {
+        "df_original":     df,
+        "filenames":       filenames,
+        "col_mapping":     col_mapping_global,
+        "date_range":      dr,
+        "date_format":     date_format,
+        "date_detection":  date_detection,
+        "items":           items,
+        "classifications": {},
+        "generalizations": {},
+        "dfs_anonymized":  None,
+        "metrics":         None,
+        "imputation_log":  {},
+        "report_md":       None,
+        "report_html":     None,
+    }
+
+    return {
+        "session_id":      sid,
+        "status":          "ok",
+        "filenames":       filenames,
+        "n_files":         len(filenames),
+        "n_records":       len(df),
+        "n_patients":      int(df["pacient"].nunique()),
+        "n_items":         len(items),
+        "date_range":      dr,
+        "date_format":     date_format,
+        "date_detection":  date_detection,
+        "items":           items,
+        "preview":         _df_preview(df),
+        "per_file_stats":  per_file_stats,
+        "relationship":    relationship,
+        "col_mapping":     col_mapping_global,
+    }
 
 
 # ── Endpoint 1b: Override del format de timestamp ────────────────────────────

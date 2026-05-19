@@ -85,6 +85,8 @@ Si les teves dades estan repartides en fitxers temàtics relacionats, pots pujar
 
 L'aplicació detecta automàticament les variantes del nom de columna i les normalitza internament. El nom de les variables clíniques pot ser qualsevol — l'app s'adapta al contingut de cada fitxer.
 
+**Els noms de columna personalitzats també valen.** Si alguna de les 4 columnes no coincideix amb cap dels àlies anteriors, la pantalla de càrrega fa una **inferència posicional** — assumeix que la 1a columna és `pacient`, la 2a `data`, la 3a `item` i la 4a `valor` — i mostra una previsualització amb quatre desplegables perquè confirmis l'assignació o triïs una altra columna per a cada camp abans de continuar. La càrrega no falla mai silenciosament per noms no reconeguts: o acceptes la proposta amb un clic o la corregeixes explícitament.
+
 ### Exemple de files
 
 ```csv
@@ -111,6 +113,7 @@ P0001,2023-03-28,estado_cognitivo,deterioro_moderado
 - Accepta codificacions UTF-8, Latin-1, CP1252
 - Detecta automàticament el tipus de cada variable (numèrica vs. categòrica)
 - Mostra estadístiques, distribució de valors i previsualització
+- **Confirmació del mapatge de columnes**: els noms es busquen primer a la taula d'àlies. Si alguna de les 4 columnes canòniques (`pacient`, `data`, `item`, `valor`) no es detecta pel nom, la interfície mostra una previsualització del fitxer i quatre desplegables precarregats amb una proposta basada en l'ordre de les columnes — confirmes o ajustes abans de continuar, de manera que la càrrega no falli mai silenciosament per capçaleres desconegudes.
 - **Auto-detecció del format de timestamp**: prova ISO 8601, day-first (`DD/MM/AAAA`) i month-first (`MM/DD/AAAA`) sobre la columna `data`, escull el format amb menys errors de parsing i mostra cinc valors d'exemple perquè puguis forçar una altra opció si la interpretació no és correcta. S'admeten timestamps amb hora/minut i es conserven amb resolució de minuts.
 - **Comprovació de seguretat multi-fitxer**: en pujar més d'un CSV, la interfície mostra estadístiques per fitxer (registres, pacients únics, variables), la proporció de pacients comuns a tots els fitxers i la llista de variables que apareixen en més d'un. Cal marcar una casella de confirmació abans de continuar — vegeu [Format del CSV d'entrada](#format-del-csv-dentrada).
 

@@ -134,21 +134,79 @@ def detect_date_format(series: pd.Series) -> dict:
 
 # ── Normalització i validació ─────────────────────────────────────────────────
 
+def _alias_match(raw_columns: list[str]) -> dict[str, str]:
+    """Retorna {raw_col: canonical} pels noms que coincideixin amb algun àlies.
+
+    Reservat: cada raw_col es mapeja com a màxim una vegada, i cada canonical
+    com a màxim una vegada (la primera columna que el reclama guanya).
+    """
+    rename_map: dict[str, str] = {}
+    cols_lower = {c: c.strip().lower() for c in raw_columns}
+    for canonical, aliases in COL_ALIASES.items():
+        for orig_col, lower_col in cols_lower.items():
+            if (
+                lower_col in aliases
+                and canonical not in rename_map.values()
+                and orig_col not in rename_map
+            ):
+                rename_map[orig_col] = canonical
+                break
+    return rename_map
+
+
+def propose_mapping(raw_columns: list[str]) -> tuple[dict[str, str | None], bool]:
+    """Proposa un mapatge {canonical: raw_col} en dues passades:
+
+      1. Coincidència per àlies (case-insensitive sobre el nom de la columna).
+      2. Fallback posicional: per als canonicals que el pas 1 no ha cobert,
+         assigna en ordre (pacient → data → item → valor) les columnes raw
+         que encara no s'han consumit.
+
+    Retorna `(mapping, alias_complete)`. Si `alias_complete` és True, el pas 1
+    ja ha cobert els 4 canonicals i el frontend pot continuar sense demanar
+    confirmació; si és False, cal ensenyar la proposta a l'usuari perquè la
+    validi o la corregeixi.
+    """
+    alias_match = _alias_match(raw_columns)
+    mapping: dict[str, str | None] = {c: None for c in ("pacient", "data", "item", "valor")}
+    for raw, canon in alias_match.items():
+        mapping[canon] = raw
+    alias_complete = all(v is not None for v in mapping.values())
+
+    if not alias_complete:
+        used = set(alias_match.keys())
+        unmatched = [c for c in raw_columns if c not in used]
+        for canonical in ("pacient", "data", "item", "valor"):
+            if mapping[canonical] is None and unmatched:
+                mapping[canonical] = unmatched.pop(0)
+
+    return mapping, alias_complete
+
+
+def apply_user_mapping(df: pd.DataFrame, mapping: dict[str, str]) -> pd.DataFrame:
+    """Renombra columnes segons un mapatge explícit `{canonical: raw_col}` i
+    castia `pacient`/`item` a str preservant NaN. El mapatge ha d'estar
+    validat (4 canonicals coberts, sense duplicats) abans de cridar.
+    """
+    rename = {raw: canon for canon, raw in mapping.items() if raw}
+    df = df.rename(columns=rename)
+    for col in ("pacient", "item"):
+        if col in df.columns:
+            df[col] = _coerce_str(df[col])
+    return df
+
+
 def normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Renombra les columnes als noms canònics i estabilitza els tipus.
+    """Renombra les columnes als noms canònics només per àlies i estabilitza
+    els tipus identificadors. Sense fallback posicional — això es decideix a
+    `propose_mapping`, i si cal confirmació passa per `apply_user_mapping`.
 
     A més del rename, casteja `pacient` i `item` a str (preservant NaN) perquè
     qualsevol sort/groupby/unstack downstream no peti si la columna barreja
     tipus (NaN+str, int+str). `valor` no es toca: pot legítimament barrejar
     numèrics i categòrics i ja s'estringa puntualment on cal.
     """
-    rename_map = {}
-    cols_lower = {c: c.strip().lower() for c in df.columns}
-    for canonical, aliases in COL_ALIASES.items():
-        for orig_col, lower_col in cols_lower.items():
-            if lower_col in aliases and canonical not in rename_map.values():
-                rename_map[orig_col] = canonical
-                break
+    rename_map = _alias_match(list(df.columns))
     if rename_map:
         df = df.rename(columns=rename_map)
     for col in ("pacient", "item"):

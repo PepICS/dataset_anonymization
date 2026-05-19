@@ -84,6 +84,16 @@ const TRANSLATIONS = {
     mfSharedHint:           "(idealment ≈ 100 % per a un mateix dataset)",
     mfOverlapWarn:          "Hi ha",
     mfOverlapWarn2:         "variables que apareixen en més d'un fitxer",
+
+    // Confirmació del mapatge de columnes (fase 1)
+    mapTitle:        "⚠️ Confirma la correspondència de columnes",
+    mapDesc:         "No s'ha pogut detectar pel nom alguna de les 4 columnes esperades (<code>pacient</code>, <code>data</code>, <code>item</code>, <code>valor</code>). S'ha fet una proposta basada en l'ordre de les columnes. Revisa-la i ajusta-la si cal abans de continuar.",
+    mapAliasOk:      "detectat pel nom de columna",
+    mapNeedsReview:  "revisa el mapatge proposat",
+    mapDupErr:       "No es pot assignar la mateixa columna a més d'un camp",
+    mapConfirm:      "Confirma i continua →",
+    mapCancel:       "← Cancel·la",
+
     infoItems: "Per a la resta d'ítems, indica si cada un és quasi-identificador o no identificatiu:",
     roleQuasi: "🔍 Quasi-identificador",
     roleNonId: "✅ No identificatiu",
@@ -226,6 +236,16 @@ const TRANSLATIONS = {
     mfSharedHint:           "(idealmente ≈ 100 % para un mismo dataset)",
     mfOverlapWarn:          "Hay",
     mfOverlapWarn2:         "variables que aparecen en más de un fichero",
+
+    // Confirmación del mapeo de columnas (fase 1)
+    mapTitle:        "⚠️ Confirma la correspondencia de columnas",
+    mapDesc:         "No se ha podido detectar por el nombre alguna de las 4 columnas esperadas (<code>pacient</code>, <code>data</code>, <code>item</code>, <code>valor</code>). Se ha hecho una propuesta basada en el orden de las columnas. Revísala y ajústala si es necesario antes de continuar.",
+    mapAliasOk:      "detectado por el nombre de columna",
+    mapNeedsReview:  "revisa el mapeo propuesto",
+    mapDupErr:       "No se puede asignar la misma columna a más de un campo",
+    mapConfirm:      "Confirma y continúa →",
+    mapCancel:       "← Cancelar",
+
     infoItems: "Para el resto de ítems, indica si cada uno es cuasi-identificador o no identificativo:",
     roleQuasi: "🔍 Cuasi-identificador",
     roleNonId: "✅ No identificativo",
@@ -365,6 +385,16 @@ const TRANSLATIONS = {
     mfSharedHint:           "(ideally ≈ 100% for a single dataset)",
     mfOverlapWarn:          "There are",
     mfOverlapWarn2:         "variables appearing in more than one file",
+
+    // Column mapping confirmation (phase 1)
+    mapTitle:        "⚠️ Confirm column mapping",
+    mapDesc:         "One or more of the 4 expected columns (<code>pacient</code>, <code>data</code>, <code>item</code>, <code>valor</code>) could not be detected by name. A proposal based on column order has been made. Review and adjust if needed before continuing.",
+    mapAliasOk:      "detected by column name",
+    mapNeedsReview:  "review the proposed mapping",
+    mapDupErr:       "The same column cannot be assigned to more than one field",
+    mapConfirm:      "Confirm and continue →",
+    mapCancel:       "← Cancel",
+
     infoItems: "For all other items, indicate whether each is a quasi-identifier or non-identifying:",
     roleQuasi: "🔍 Quasi-identifier",
     roleNonId: "✅ Non-identifying",

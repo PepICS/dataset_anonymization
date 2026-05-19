@@ -23,9 +23,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.modules.anonymizer import (
     apply_k_anonymity,
+    apply_user_mapping,
     compute_date_deltas,
     normalize_columns,
     profile_items,
+    propose_mapping,
 )
 
 
@@ -74,6 +76,58 @@ def test_apply_k_anonymity_handles_mixed_types_end_to_end():
     out = apply_k_anonymity(df, quasi_id_items=["age", "sex"], k=2)
     assert out["k_used"] == 2
     assert out["n_patients_orig"] >= out["n_patients_final"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Column-mapping proposal — handles CSVs whose columns don't match any alias.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_propose_mapping_all_aliases_match():
+    mapping, complete = propose_mapping(["patient_id", "fecha", "variable", "value"])
+    assert complete is True
+    assert mapping == {
+        "pacient": "patient_id",
+        "data":    "fecha",
+        "item":    "variable",
+        "valor":   "value",
+    }
+
+
+def test_propose_mapping_partial_alias_falls_back_to_position():
+    # 'fecha' is an alias; the other 3 names are unknown, so positional fallback
+    # fills pacient → 1st unmatched, item → 2nd, valor → 3rd, in column order.
+    mapping, complete = propose_mapping(["nº historia", "fecha", "campo medido", "resultado obtenido"])
+    assert complete is False
+    assert mapping == {
+        "pacient": "nº historia",
+        "data":    "fecha",
+        "item":    "campo medido",
+        "valor":   "resultado obtenido",
+    }
+
+
+def test_propose_mapping_no_alias_match_uses_pure_position():
+    mapping, complete = propose_mapping(["a", "b", "c", "d"])
+    assert complete is False
+    assert mapping == {"pacient": "a", "data": "b", "item": "c", "valor": "d"}
+
+
+def test_apply_user_mapping_renames_and_coerces():
+    df = pd.DataFrame({
+        "Edad": [30, 45, 60],
+        "Cuando": ["2020-01-01", "2020-02-01", "2020-03-01"],
+        "Que": ["x", "y", "z"],
+        "Cuanto": [1, 2, 3],
+    })
+    df2 = apply_user_mapping(df, {
+        "pacient": "Edad",
+        "data":    "Cuando",
+        "item":    "Que",
+        "valor":   "Cuanto",
+    })
+    assert set(df2.columns) == {"pacient", "data", "item", "valor"}
+    # pacient was coerced to str
+    assert all(isinstance(v, str) for v in df2["pacient"].dropna())
 
 
 def test_profile_items_mixed_valor_does_not_crash():

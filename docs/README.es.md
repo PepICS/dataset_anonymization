@@ -85,6 +85,8 @@ Si tus datos están repartidos en ficheros temáticos relacionados, puedes subir
 
 La aplicación detecta automáticamente las variantes del nombre de columna y las normaliza internamente. El nombre de las variables clínicas puede ser cualquiera — la app se adapta al contenido de cada fichero.
 
+**Los nombres de columna personalizados también valen.** Si alguna de las 4 columnas no coincide con los alias anteriores, la pantalla de carga hace una **inferencia posicional** — asume que la 1ª columna es `pacient`, la 2ª `data`, la 3ª `item` y la 4ª `valor` — y muestra una previsualización con cuatro desplegables para que confirmes la asignación o elijas otra columna para cada campo antes de continuar. La carga nunca falla silenciosamente por nombres no reconocidos: o aceptas la propuesta con un clic o la corriges explícitamente.
+
 ### Ejemplo de filas
 
 ```csv
@@ -111,6 +113,7 @@ P0001,2023-03-28,estado_cognitivo,deterioro_moderado
 - Acepta codificaciones UTF-8, Latin-1, CP1252
 - Detecta automáticamente el tipo de cada variable (numérica vs. categórica)
 - Muestra estadísticas, distribución de valores y previsualización
+- **Confirmación del mapeo de columnas**: los nombres se buscan primero en la tabla de alias. Si alguna de las 4 columnas canónicas (`pacient`, `data`, `item`, `valor`) no se detecta por el nombre, la interfaz muestra una previsualización del fichero y cuatro desplegables precargados con una propuesta basada en el orden de las columnas — confirmas o ajustas antes de continuar, de modo que la carga nunca falle silenciosamente por cabeceras desconocidas.
 - **Auto-detección del formato de timestamp**: prueba ISO 8601, day-first (`DD/MM/AAAA`) y month-first (`MM/DD/AAAA`) sobre la columna `data`, escoge el formato con menos errores de parsing y muestra cinco valores de ejemplo para que puedas forzar otra opción si la interpretación no es correcta. Se admiten timestamps con hora/minuto y se conservan con resolución de minutos.
 - **Comprobación de seguridad multi-fichero**: al subir más de un CSV, la interfaz muestra estadísticas por fichero (registros, pacientes únicos, variables), la proporción de pacientes comunes a todos los ficheros y la lista de variables que aparecen en más de uno. Se requiere marcar una casilla de confirmación antes de continuar — ver [Formato del CSV de entrada](#formato-del-csv-de-entrada).
 

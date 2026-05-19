@@ -84,6 +84,19 @@
       <div id="upload-error" class="alert alert-danger" style="display:none; margin-top:0.85rem;"></div>
     </div>
 
+    <div class="card" id="mapping-confirm-card" style="display:none; border-color:var(--amber);">
+      <div class="card-title" data-lang="mapTitle">⚠️ Confirma la correspondència de columnes</div>
+      <div class="input-help" style="margin-bottom:0.85rem;" data-lang="mapDesc">
+        No s'ha pogut detectar pel nom alguna de les 4 columnes esperades (<code>pacient</code>, <code>data</code>, <code>item</code>, <code>valor</code>). S'ha fet una proposta basada en l'ordre de les columnes. Revisa-la i ajusta-la si cal abans de continuar.
+      </div>
+      <div id="mapping-confirm-body"></div>
+      <div id="mapping-error" class="alert alert-danger" style="display:none; margin-top:0.85rem;"></div>
+      <div class="btn-group" style="margin-top:1rem;">
+        <button class="btn btn-secondary" onclick="startOver()" data-lang="mapCancel">← Cancel·la</button>
+        <button class="btn btn-primary" onclick="confirmMapping()" data-lang="mapConfirm">Confirma i continua →</button>
+      </div>
+    </div>
+
     <div id="upload-results" style="display:none;">
       <div class="stats-grid" id="stats-grid"></div>
 
@@ -293,7 +306,7 @@
 
 </main>
 
-<script src="/static/js/i18n.js?v=20260511"></script>
-<script src="/static/js/app.js?v=20260511"></script>
+<script src="/static/js/i18n.js?v=20260519"></script>
+<script src="/static/js/app.js?v=20260519"></script>
 </body>
 </html>

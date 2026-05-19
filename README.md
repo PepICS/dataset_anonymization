@@ -117,6 +117,8 @@ Column names are automatically detected via alias matching:
 
 The application automatically detects column name variants and normalises them internally.
 
+**Custom column names are fine.** If one or more of your columns doesn't match the aliases above, the upload screen falls back to **positional inference** — it assumes the 1st column is `pacient`, the 2nd is `data`, the 3rd is `item` and the 4th is `valor` — and shows you a preview plus four dropdowns so you can confirm the assignment or pick a different column for any field before continuing. The upload never silently fails on unrecognised names; you either accept the proposal in one click or remap it explicitly.
+
 ### Example rows
 
 ```csv
@@ -143,6 +145,7 @@ P0001,2023-03-28,estado_cognitivo,deterioro_moderado
 - Accepts UTF-8, Latin-1, CP1252 encodings
 - Automatically detects variable type (numeric vs. categorical)
 - Shows statistics, value distribution and data preview
+- **Column mapping confirmation**: column names are first matched against the alias table. If any of the four canonical columns (`pacient`, `data`, `item`, `valor`) can't be detected by name, the UI shows a preview of the file and four dropdowns pre-filled with a proposal based on column order — you confirm or adjust before continuing, so the upload never silently fails on unrecognised headers.
 - **Timestamp format auto-detection**: tries ISO 8601, day-first (`DD/MM/YYYY`) and month-first (`MM/DD/YYYY`) on the `data` column, picks the format with fewest parse failures, and previews five sample values so you can override the choice if the interpretation is wrong. Timestamps with hours/minutes are supported and preserved at minute resolution.
 - **Multi-file safety check**: when more than one CSV is uploaded, the UI shows per-file stats (records, unique patients, variables), the share of patients common to all files, and a list of variables appearing in more than one file. A confirmation checkbox is required before continuing — see [Input CSV format](#input-csv-format).
 

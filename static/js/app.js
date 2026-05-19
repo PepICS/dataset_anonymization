@@ -87,6 +87,10 @@ async function doUpload(files) {
   hideErr('upload-error');
   el('drop-title').textContent = '⏳ ' + t('uploading') + '...';
 
+  // Amaguem qualsevol panel d'una pujada anterior
+  el('upload-results').style.display = 'none';
+  var mc = el('mapping-confirm-card'); if (mc) mc.style.display = 'none';
+
   // Mostrar llista de fitxers seleccionats
   var fl = el('files-list');
   fl.style.display = 'block';
@@ -106,26 +110,119 @@ async function doUpload(files) {
     var data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Error');
 
-    State.sessionId          = data.session_id;
-    State.items              = data.items;
-    State.nFiles             = data.n_files || 1;
-    State.dateFormat         = data.date_format    || 'iso';
-    State.dateDetection      = data.date_detection || null;
-    State.multifileConfirmed = false;
+    if (data.status === 'needs_mapping') {
+      State.sessionId = data.session_id;
+      renderMappingConfirm(data);
+      return;
+    }
 
-    State.classifications = {};
-    data.items.forEach(function(item){ State.classifications[item.name] = 'non_id'; });
-
-    renderUpload(data);
-    renderDateFormat();
-    renderMultifileConfirm(data);
-    updateContinueGate();
+    _applyUploadResponse(data);
   } catch(err) {
     showErr('upload-error', err.message);
     el('files-list').style.display = 'none';
   } finally {
     el('drop-title').setAttribute('data-lang','dropZoneTitle');
     el('drop-title').textContent = t('dropZoneTitle');
+  }
+}
+
+function _applyUploadResponse(data) {
+  State.sessionId          = data.session_id;
+  State.items              = data.items;
+  State.nFiles             = data.n_files || 1;
+  State.dateFormat         = data.date_format    || 'iso';
+  State.dateDetection      = data.date_detection || null;
+  State.multifileConfirmed = false;
+
+  State.classifications = {};
+  data.items.forEach(function(item){ State.classifications[item.name] = 'non_id'; });
+
+  var mc = el('mapping-confirm-card'); if (mc) mc.style.display = 'none';
+
+  renderUpload(data);
+  renderDateFormat();
+  renderMultifileConfirm(data);
+  updateContinueGate();
+}
+
+// ── Confirmació del mapatge de columnes ───────────────────────────────────────
+function renderMappingConfirm(data) {
+  var card = el('mapping-confirm-card');
+  if (!card) return;
+  card.style.display = 'block';
+
+  var canonicals = ['pacient', 'data', 'item', 'valor'];
+
+  var html = (data.files || []).map(function(f) {
+    var ok       = !!f.alias_complete;
+    var statusEm = ok ? '✅' : '⚠️';
+    var statusTx = ok ? t('mapAliasOk') : t('mapNeedsReview');
+
+    var previewHead = (f.preview.columns || []).map(function(c){ return '<th>' + esc(c) + '</th>'; }).join('');
+    var previewRows = (f.preview.rows    || []).map(function(row){
+      return '<tr>' + row.map(function(cell){ return '<td>' + esc(String(cell)) + '</td>'; }).join('') + '</tr>';
+    }).join('');
+
+    var selectors = canonicals.map(function(canon) {
+      var sel = f.proposed_mapping[canon] || '';
+      var opts = (f.raw_columns || []).map(function(rc) {
+        return '<option value="' + esc(rc) + '"' + (rc === sel ? ' selected' : '') + '>' + esc(rc) + '</option>';
+      }).join('');
+      return '<div class="input-group">' +
+        '<label style="font-family:var(--mono); color:var(--accent);">' + esc(canon) + '</label>' +
+        '<select class="input-field map-select" data-file="' + esc(f.filename) + '" data-canonical="' + canon + '">' +
+        opts +
+        '</select>' +
+        '</div>';
+    }).join('');
+
+    return '<div style="margin-bottom:1.4rem; padding-bottom:1.1rem; border-bottom:1px solid var(--border);">' +
+      '<div style="font-family:var(--mono); color:var(--accent); font-weight:600; margin-bottom:0.45rem;">' +
+        statusEm + ' ' + esc(f.filename) +
+        ' <span style="color:var(--text-muted); font-weight:400; font-size:0.78rem;">— ' + esc(statusTx) + '</span>' +
+      '</div>' +
+      '<div class="table-wrap" style="margin-bottom:0.7rem;">' +
+        '<table><thead><tr>' + previewHead + '</tr></thead><tbody>' + previewRows + '</tbody></table>' +
+      '</div>' +
+      '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.6rem;">' +
+        selectors +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  el('mapping-confirm-body').innerHTML = html;
+}
+
+async function confirmMapping() {
+  hideErr('mapping-error');
+
+  var mappings = {};
+  document.querySelectorAll('#mapping-confirm-body .map-select').forEach(function(sel) {
+    var fname = sel.getAttribute('data-file');
+    var canon = sel.getAttribute('data-canonical');
+    if (!mappings[fname]) mappings[fname] = {};
+    mappings[fname][canon] = sel.value;
+  });
+
+  // Validació local: una columna no es pot reutilitzar per a dos canonicals
+  var dup = null;
+  Object.keys(mappings).forEach(function(fname) {
+    var vals = Object.values(mappings[fname]);
+    if (new Set(vals).size !== vals.length) dup = fname;
+  });
+  if (dup) {
+    showErr('mapping-error', t('mapDupErr') + ' (' + dup + ')');
+    return;
+  }
+
+  try {
+    var data = await api('/api/confirm-mapping', 'POST', {
+      session_id: State.sessionId,
+      mappings:   mappings,
+    });
+    _applyUploadResponse(data);
+  } catch(err) {
+    showErr('mapping-error', err.message);
   }
 }
 
@@ -695,6 +792,10 @@ function startOver() {
   State.nFiles=1; State.multifileConfirmed=false;
   var cb = el('multifile-confirm-checkbox'); if (cb) cb.checked = false;
   var mfc = el('multifile-confirm-card');    if (mfc) mfc.style.display = 'none';
+  var mpc = el('mapping-confirm-card');      if (mpc) mpc.style.display = 'none';
+  var fl  = el('files-list');                if (fl)  fl.style.display  = 'none';
+  hideErr('upload-error');
+  hideErr('mapping-error');
   el('upload-results').style.display='none';
   el('file-input').value='';
   el('results-section').style.display='none';
