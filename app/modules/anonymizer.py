@@ -336,7 +336,7 @@ def impute_missing_values(df: pd.DataFrame, quasi_id_items: list[str]) -> tuple[
             continue
 
         num_vals = pd.to_numeric(vals, errors="coerce")
-        is_num   = (num_vals.notna().sum() / len(vals)) > 0.8
+        is_num   = bool((num_vals.notna().sum() / len(vals)) > 0.8)
 
         if is_num:
             median_val = num_vals.median()
