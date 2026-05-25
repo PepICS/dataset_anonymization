@@ -202,6 +202,28 @@ def test_date_delta_preserves_unparseable_as_na():
     assert out.loc[2, "data"] == 0
 
 
+def test_date_delta_handles_mixed_naive_and_tz_aware_iso():
+    """Regression: real CCAA datasets (seen in Aragón AP CSV) mix naive ISO
+    timestamps with `+00:00`-offset ones in the same column. Pre-fix this
+    made `_parse_dates` return object dtype and `groupby.transform("min")`
+    crashed with `agg function failed [how->min,dtype->object]`."""
+    df = pd.DataFrame({
+        "pacient": ["A", "A", "B", "B"],
+        "data":    [
+            "2024-01-01 00:00:00",          # naive
+            "2024-01-01 12:00:00+00:00",    # tz-aware UTC, same patient
+            "2024-06-15 08:00:00+00:00",    # tz-aware
+            "2024-06-15 09:30:00",          # naive
+        ],
+        "item":    ["x"] * 4,
+        "valor":   [1, 2, 3, 4],
+    })
+    out = compute_date_deltas(df, date_format="iso")
+    assert str(out["data"].dtype) == "Int64"
+    # A: 0 then +720 min (12h). B: 0 then +90 min.
+    assert out["data"].tolist() == [0, 720, 0, 90]
+
+
 # ── k-anonymity ───────────────────────────────────────────────────────────────
 
 def test_k_anonymity_drops_only_under_k_patients_and_keeps_the_rest():
