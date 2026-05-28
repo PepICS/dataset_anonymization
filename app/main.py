@@ -23,9 +23,11 @@ import traceback
 from datetime import datetime, timezone
 from typing import List
 
+import math
+import numpy as np
 import pandas as pd
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -46,6 +48,44 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Garanteix que qualsevol excepció no controlada torni JSON i no el
+    handler 500 default amb text pla 'Internal Server Error', que feia que
+    el frontend mostrés 'Unexpected token I' en lloc d'un missatge útil."""
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {exc}"},
+    )
+
+
+def _to_json_safe(obj):
+    """Casteja recursivament tipus numpy/pandas a tipus natius Python perquè
+    la serialització JSON de FastAPI no peti silenciosament (cas vist: amb
+    np.bool_ a /api/anonymize, corregit a f9e435b; reapareixia amb altres
+    tipus numpy provinents de pandas)."""
+    if isinstance(obj, dict):
+        return {str(k): _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_json_safe(v) for v in obj]
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        v = float(obj)
+        return None if (math.isnan(v) or math.isinf(v)) else v
+    if isinstance(obj, np.ndarray):
+        return _to_json_safe(obj.tolist())
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    if obj is pd.NA or obj is pd.NaT:
+        return None
+    return obj
+
 
 sessions: dict[str, dict] = {}
 PREVIEW_ROWS = 8
@@ -608,7 +648,7 @@ async def anonymize(req: AnonymizeRequest):
         result["imputation_log"] = imputation_log
         result["n_files"]        = len(sess["filenames"])
         result["filenames"]      = sess["filenames"]
-        return result
+        return _to_json_safe(result)
 
     except HTTPException:
         raise

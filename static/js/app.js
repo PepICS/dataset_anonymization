@@ -37,8 +37,17 @@ async function api(path, method, body) {
   var opts = { method: method||'GET', headers: {} };
   if (body) { opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(body); }
   var res  = await fetch(path, opts);
-  var data = await res.json();
-  if (!res.ok) throw new Error(data.detail || 'Error '+res.status);
+  // Llegim primer com a text: si el servidor torna HTML/plain (cas del 500
+  // default de Starlette), no volem petar amb "Unexpected token" — volem
+  // ensenyar a l'usuari què ha passat.
+  var raw  = await res.text();
+  var data = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch (e) { /* not JSON */ }
+  if (!res.ok) {
+    var msg = (data && data.detail) ? data.detail
+            : (raw ? raw.slice(0, 300) : 'Error '+res.status);
+    throw new Error('['+res.status+'] '+msg);
+  }
   return data;
 }
 
