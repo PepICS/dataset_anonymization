@@ -14,6 +14,7 @@ Endpoints:
   DELETE /api/session/{sid}        → Neteja sessió
 """
 
+import csv as _csv
 import io
 import json
 import uuid
@@ -119,15 +120,51 @@ def _date_range(df: pd.DataFrame, date_format: str = "iso") -> dict:
         return {"min": None, "max": None}
 
 def _read_csv(content: bytes) -> pd.DataFrame:
-    """Llegeix un CSV provant diverses codificacions."""
-    for enc in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+    """Llegeix un CSV tolerant a encodings i a cometes mal balancejades.
+
+    Tres nivells de tolerància (provats per cada encoding):
+      1. Parser C (ràpid, estricte amb cometes). Cobreix la majoria de CSVs.
+      2. Parser Python amb `on_bad_lines='skip'`: salta línies malformades en
+         lloc de petar. Activat quan el parser C llança ParserError, típicament
+         per cometes desbalancejades que fusionen línies.
+      3. Parser Python amb `quoting=QUOTE_NONE`: tracta les cometes com a text
+         literal. Últim recurs per CSVs amb cometes dobles literals dins valors
+         no quotejats (cas vist a Osakidetza).
+    """
+    encodings = ("utf-8", "utf-8-sig", "latin-1", "cp1252")
+    last_err: Exception | None = None
+
+    def _try_read(enc: str, **kwargs) -> pd.DataFrame:
+        df = pd.read_csv(io.BytesIO(content), encoding=enc, low_memory=False, **kwargs)
+        df.columns = [c.strip().lower() for c in df.columns]
+        return df
+
+    for enc in encodings:
         try:
-            df = pd.read_csv(io.BytesIO(content), encoding=enc, low_memory=False)
-            df.columns = [c.strip().lower() for c in df.columns]
-            return df
+            return _try_read(enc)
         except UnicodeDecodeError:
             continue
-    raise ValueError("No s'ha pogut llegir el fitxer (encoding no reconegut).")
+        except pd.errors.ParserError as e:
+            last_err = e
+            try:
+                return _try_read(enc, engine="python", on_bad_lines="skip")
+            except UnicodeDecodeError:
+                continue
+            except Exception as e2:
+                last_err = e2
+                try:
+                    return _try_read(
+                        enc, engine="python",
+                        quoting=_csv.QUOTE_NONE, on_bad_lines="skip",
+                    )
+                except UnicodeDecodeError:
+                    continue
+                except Exception as e3:
+                    last_err = e3
+                    continue
+
+    detail = f": {last_err}" if last_err else "."
+    raise ValueError(f"No s'ha pogut llegir el fitxer (encoding o format no reconegut){detail}")
 
 def _stream(content: str | bytes, media_type: str, filename: str) -> StreamingResponse:
     return StreamingResponse(
@@ -136,12 +173,15 @@ def _stream(content: str | bytes, media_type: str, filename: str) -> StreamingRe
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
-def _build_zip(csv_map: dict[str, str]) -> bytes:
-    """Construeix un ZIP en memòria amb un CSV per entrada del dict."""
+def _build_zip(csv_map: dict[str, bytes]) -> bytes:
+    """Construeix un ZIP en memòria amb un CSV per entrada del dict.
+
+    Els valors han d'estar ja codificats com a bytes (preferiblement utf-8-sig
+    perquè Excel a Windows obri els CSVs sense corrompre accents)."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fname, csv_content in csv_map.items():
-            zf.writestr(fname, csv_content)
+        for fname, csv_bytes in csv_map.items():
+            zf.writestr(fname, csv_bytes)
     return buf.getvalue()
 
 
@@ -591,19 +631,18 @@ async def download_csv(session_id: str):
 
     dfs = sess["dfs_anonymized"]
 
+    # BOM UTF-8 a la sortida: Excel a Windows obre CSVs sense BOM com a cp1252
+    # i corromp accents (`Catéter` → `CatÃ©ter`). El BOM força la detecció UTF-8.
     if len(dfs) == 1:
         fname, df = next(iter(dfs.items()))
-        buf = io.StringIO()
-        df.to_csv(buf, index=False)
+        csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
         out_name = fname.replace(".csv", "") + "_anonymized.csv"
-        return _stream(buf.getvalue(), "text/csv", out_name)
+        return _stream(csv_bytes, "text/csv; charset=utf-8", out_name)
     else:
-        csv_map = {}
+        csv_map: dict[str, bytes] = {}
         for fname, df in dfs.items():
-            buf = io.StringIO()
-            df.to_csv(buf, index=False)
             out_name = fname.replace(".csv", "") + "_anonymized.csv"
-            csv_map[out_name] = buf.getvalue()
+            csv_map[out_name] = df.to_csv(index=False).encode("utf-8-sig")
         zip_bytes = _build_zip(csv_map)
         return _stream(zip_bytes, "application/zip", "datasets_anonymized.zip")
 
