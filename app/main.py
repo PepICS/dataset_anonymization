@@ -169,13 +169,20 @@ def _read_csv(content: bytes) -> pd.DataFrame:
          per cometes desbalancejades que fusionen línies.
       3. Parser Python amb `quoting=QUOTE_NONE`: tracta les cometes com a text
          literal. Últim recurs per CSVs amb cometes dobles literals dins valors
-         no quotejats (cas vist a Osakidetza).
+         no quotejats (cas vist a Osakidetza) i per cometes que obren a meitat
+         de valor i mai es tanquen — el parser python amb skip salta totes les
+         línies fusionades, QUOTE_NONE les recupera.
+
+    `low_memory` només és vàlid amb el parser C; passar-lo al parser python
+    fa petar amb ValueError i els fallbacks tolerants no s'executen mai.
     """
     encodings = ("utf-8", "utf-8-sig", "latin-1", "cp1252")
     last_err: Exception | None = None
 
     def _try_read(enc: str, **kwargs) -> pd.DataFrame:
-        df = pd.read_csv(io.BytesIO(content), encoding=enc, low_memory=False, **kwargs)
+        if kwargs.get("engine") is None:
+            kwargs.setdefault("low_memory", False)
+        df = pd.read_csv(io.BytesIO(content), encoding=enc, **kwargs)
         df.columns = [c.strip().lower() for c in df.columns]
         return df
 
@@ -186,17 +193,22 @@ def _read_csv(content: bytes) -> pd.DataFrame:
             continue
         except pd.errors.ParserError as e:
             last_err = e
+            # Per cometes desbalancejades (típic: cometa obre i no tanca dins
+            # de la fila) el parser python amb on_bad_lines='skip' descarta
+            # totes les línies fusionades en lloc de salvar-les. QUOTE_NONE
+            # és l'única estratègia que recupera el contingut original, així
+            # que el fem servir directament en aquest cas.
             try:
-                return _try_read(enc, engine="python", on_bad_lines="skip")
+                return _try_read(
+                    enc, engine="python",
+                    quoting=_csv.QUOTE_NONE, on_bad_lines="skip",
+                )
             except UnicodeDecodeError:
                 continue
             except Exception as e2:
                 last_err = e2
                 try:
-                    return _try_read(
-                        enc, engine="python",
-                        quoting=_csv.QUOTE_NONE, on_bad_lines="skip",
-                    )
+                    return _try_read(enc, engine="python", on_bad_lines="skip")
                 except UnicodeDecodeError:
                     continue
                 except Exception as e3:
